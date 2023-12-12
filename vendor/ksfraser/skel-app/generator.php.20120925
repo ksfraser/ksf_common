@@ -1,0 +1,2111 @@
+<?php
+
+/*  20120912 KF
+	a C program is passed GET parameters as a QUERY_STRING environment variable.
+
+	a C program is passed POST variables in a more complicated manner
+		Check env variable CONTENT_LENGTH for the maximum length to read
+		decode the stdin
+*	from http://www.cs.tut.fi/~jkorpela/forms/cgic.html
+*		#include <stdio.h>
+*		#include <stdlib.h>
+*		#define MAXLEN 80
+*		#define EXTRA 5
+*		/ * 4 for field name "data", 1 for "=" * /
+*		#define MAXINPUT MAXLEN+EXTRA+2
+*		/ * 1 for added line break, 1 for trailing NUL * /
+*		#define DATAFILE "../data/data.txt"
+*		
+*		void unencode(char *src, char *last, char *dest)
+*		{
+*		 for(; src != last; src++, dest++)
+*		   if(*src == '+')
+*		     *dest = ' ';
+*		   else if(*src == '%') {
+*		     int code;
+*		     if(sscanf(src+1, "%2x", &code) != 1) code = '?';
+*		     *dest = code;
+*		     src +=2; }     
+*		   else
+*		     *dest = *src;
+*		 *dest = '\n';
+*		 *++dest = '\0';
+*		}
+*		
+*		int main(void)
+*		{
+*		char *lenstr;
+*		char input[MAXINPUT], data[MAXINPUT];
+*		long len;
+*		printf("%s%c%c\n",
+*		"Content-Type:text/html;charset=iso-8859-1",13,10);
+*		printf("<TITLE>Response</TITLE>\n");
+*		lenstr = getenv("CONTENT_LENGTH");
+*		if(lenstr == NULL || sscanf(lenstr,"%ld",&len)!=1 || len > MAXLEN)
+*		  printf("<P>Error in invocation - wrong FORM probably.");
+*		else {
+*		  FILE *f;
+*		  fgets(input, len+1, stdin);
+*		  unencode(input+EXTRA, input+len, data);
+*		  f = fopen(DATAFILE, "a");
+*		  if(f == NULL)
+*		    printf("<P>Sorry, cannot store your data.");
+*		  else
+*		    fputs(data, f);
+*		  fclose(f);
+*		  printf("<P>Thank you! Your contribution has been stored.");
+*		  }
+*		return 0;
+*		}
+*/
+
+
+/*  20120902 KF for using 1 generator to handle different output languages, define some strings
+		if( $lang == "php" )	
+		{
+			define( "XXX", "xxx" );
+		}
+		else if( $lang == "c" )
+		{
+			define( "XXX", "xxx" );
+		}
+		else if( $lang == "cpp" )
+		{
+			define( "XXX", "xxx" );
+		}
+		else
+		{
+			define( "XXX", "" );
+		}
+
+	Replacing a number of PHP specific constructs with defined variables so that C/CPP/PHP can be genned from this same file
+*/
+
+
+
+/*20090308 KF Eventum issue #27 */
+//Merge the various versions of the generator
+
+	require_once('data/db.php');
+	define ("SUCCESS", 1);
+	define ("TRUE", 1);
+	define ("FALSE", 0);
+
+/* Homebuilt code generator.  Will go into MySQL db to get the description of the tables, will build classes to handle CRUD for those tables, will include SQL scripts to create tables, etc.
+
+GUI generation could also use XML descriptions.
+*/
+
+/* 20111209 KF need to add a setValues to each class to retrieve 1 row of data.
+*
+*		//Requires that date and symbol are set
+*                if( !isset( $this->date ))
+*                  return FALSE;
+*                if( !isset( $this->symbol ))
+*                  return FALSE;
+*
+*                $this->where = "symbol = '" . $this->Getsymbol() . "' and date = '" . $this->Getdate() . "'";
+*
+*                $this->Select();
+*                if( isset( $this->resultarray[0]['previous_close'] ) )
+*                {
+*                  $this->Setprevious_close($this->resultarray[0]['previous_close']);
+*                }
+*		return TRUE;
+*
+*	where the symbol and date are class dependant.  Table metadata_setvalues indicate these...
+*/
+
+/* 20120204 KF Adding in PEAR structures_dataobject classes so that we can use PEAR classes for reports 
+*	DBT (DB_Table)
+*	DBDO (DB_DataObject)
+*	PQF (PEAR's QuickForm)
+*/
+
+/* 20120910 KF Adding PEAR QuickForm2 classes
+*	PQF2
+*/
+
+
+/*
+Want to build classes in file named TABLENAME.class.php and TABLENAME.cpp
+
+define TRUE;
+define FALSE;
+define SUCCESS;
+
+class TABLENAME {
+	var $fieldspec = array('firstcol', 'secondcol', ...);
+	var $firstcol = array( value, dbtype, htmltype, ...); //Comment on datatype, size, etc.
+	var $secondcol;
+	...
+	function __contsructor()
+	{
+		return;
+	}
+	function Setfirstcol($value)
+	{
+		$this->firstcol = $value;
+		return SUCCESS;
+	}
+	function Getfirstcol()
+	{
+		return $this->firstcol;
+	}
+	function Validatefirstcol()
+	{
+		if (iscoltype($value))
+		{
+			return TRUE;
+		}
+		else
+		{
+			return FALSE;
+		}
+	}
+	...
+}
+
+*/
+
+//20090103 Eventum project framework issue #35
+//Trigger loops when a table updates a field, and then triggers its own proc to update a different table with the same field
+//This leads to the same trigger being re-triggered due to namespaces not being in play.
+//Changing how the pre/post triggers are named will break existing triggers
+//Propose 2 stage approach - have the triggers have to be in the same class (inherited).  If so, don't call triggered.php
+//Only if there isn't the triggered name within the same class then look at triggered.php
+
+require_once( 'wsdl-rpc.php' );
+
+function QF2_Required( $reqr_open, $reqr_close )
+{
+        $PQF2string = $reqr_open . "HTML/QuickForm2.php" . $reqr_close . ";\n";
+        $PQF2string .= $reqr_open . "HTML/QuickForm2/Controller.php" . $reqr_close . ";\n";
+        $PQF2string .= $reqr_open . "HTML/QuickForm2/Renderer.php" . $reqr_close . ";\n";
+        $PQF2string .= $reqr_open . "HTML/QuickForm2/Controller/Action/Next.php" . $reqr_close . ";\n";
+        $PQF2string .= $reqr_open . "HTML/QuickForm2/Controller/Action/Back.php" . $reqr_close . ";\n";
+        $PQF2string .= $reqr_open . "HTML/QuickForm2/Controller/Action/Jump.php" . $reqr_close . ";\n";
+        $PQF2string .= $reqr_open . "HTML/QuickForm2/Controller/Action/Display.php" . $reqr_close . ";\n\n";
+        $PQF2string .= $reqr_open . "HTML/QuickForm2/Controller/Action/Submit.php" . $reqr_close . ";\n\n";
+        $PQF2string .= $reqr_open . "HTML/QuickForm2/Controller/Action/Direct.php" . $reqr_close . ";\n\n";
+        $PQF2string .= $reqr_open . "HTML/QuickForm2/DataSource/Array.php" . $reqr_close . ";\n";
+	return $PQF2string;
+}
+
+function QF2_Pages( $tablename, $FirstMiddleLast, $pagenumber, $WizardTabbed )
+{
+	if( strncasecmp( $FirstMiddleLast, "first", 5 ) == 0 )
+	{	
+        	$PQF2string = "\nclass " . $tablename . "_PageFirst extends TabbedPage\n{\n";
+	}
+	else if( strncasecmp( $FirstMiddleLast, "middle", 6 ) == 0 )
+	{	
+        	$PQF2string = "\nclass " . $tablename . "_Page" . $pagenumber . " extends TabbedPage\n{\n";
+	}
+	else if( strncasecmp( $FirstMiddleLast, "last", 4 ) == 0 )
+	{	
+        	$PQF2string = "\nclass " . $tablename . "_PageFinish extends TabbedPage\n{\n";
+	}
+
+        $PQF2string .= "\t protected function populateForm()\n\t{\n";
+
+	if( strncasecmp( $WizardTabbed, "tabbed", 6 ) == 0 )
+	{
+        	$PQF2string .= "\t\t\$this->addTabs();\n";
+	}
+
+        $PQF2string .= "\t\t\$fs = \$this->form->addElement('fieldset')->setLabel('" . $tablename . " page " . $pagenumber . "');\n";
+
+	//$PQF2string .= "\t\t\$fs->addDataSource(new HTML_QuickForm2_DataSource_Array(array( 'XXXX' => 'Joe User')));\n";
+
+        $PQF2string .= "\t\t\$buttonGroup = \$fs->addElement('group'); \n";
+
+	if( strncasecmp( $FirstMiddleLast, "first", 5 ) == 0 )
+	{	
+        	$PQF2string .= "\t\t\$buttonGroup->addElement('submit', \$this->getButtonName('next'), array('value' => 'Next >>')); \n";
+        	$PQF2string .= "\t\t\$this->setDefaultAction('next', 'empty.gif');\n";
+	}
+	else if( strncasecmp( $FirstMiddleLast, "middle", 6 ) == 0 )
+	{	
+        	$PQF2string .= "\t\t\$buttonGroup->addElement('submit', \$this->getButtonName('back'), array('value' => '<< Back')); \n";
+        	$PQF2string .= "\t\t\$buttonGroup->addElement('submit', \$this->getButtonName('next'), array('value' => 'Next >>')); \n";
+        	$PQF2string .= "\t\t\$this->setDefaultAction('next', 'empty.gif');\n";
+	}
+	else if( strncasecmp( $FirstMiddleLast, "last", 4 ) == 0 )
+	{	
+        	$PQF2string .= "\t\t\$buttonGroup->addElement('submit', \$this->getButtonName('back'), array('value' => '<< Back')); \n";
+        	$PQF2string .= "\t\t\$buttonGroup->addElement('submit', \$this->getButtonName('finish'), array('value' => 'Finish')); \n";
+        	$PQF2string .= "\t\t\$this->setDefaultAction('finish', 'empty.gif');\n";
+	}
+
+	if( strncasecmp( $WizardTabbed, "tabbed", 6 ) == 0 )
+	{
+        	$PQF2string .= "\t\t\$this->addGlobalSubmit();\n";
+	}
+	
+	return $PQF2string;
+}
+
+class my_generator
+{
+	var $tablename;
+	var $query;
+	var $result;
+	var $db; //connection, not name
+	var $classdir;
+	var $cppclassdir;
+	var $datadir;
+	var $viewdir;
+	var $controllerdir;
+	var $controllername;
+	var $cppcontrollerdir;
+	var $cppcontrollername;
+
+function __construct($table)
+{
+	$this->Settablename($table);
+	$this->includefilename = $this->tablename . ".class.inc"; 
+	$this->classfilename = $this->tablename . ".class.php"; 
+	$this->cppincludefilename = $this->tablename . ".h.h";  /*For differentiation to compare againts standalone cgen vice this one doing both*/
+	$this->cppclassfilename = $this->tablename . ".cpp.cpp"; /*For differentiation to compare againts standalone cgen vice this one doing both*/
+	echo "Table Name: $table";
+	$this->classdir = "model";
+	$this->cppclassdir = "src";
+	$this->datadir = "data";
+	$this->viewdir = "view";
+	$this->controllerdir = "../controller";
+	$this->controllername = "controller.php";
+	$this->cppcontrollername = "main.cpp";
+	$this->cppcontrollerdir = "../";
+	$this->ccontrollername = "main.c";
+	$this->ccontrollerdir = "../";
+	$this->cincludefilename = $this->tablename . ".h";  /*For differentiation to compare againts standalone cgen vice this one doing both*/
+	$this->cclassfilename = $this->tablename . ".c.c"; /*For differentiation to compare againts standalone cgen vice this one doing both*/
+	return SUCCESS;
+}
+function my_generator($table)
+{
+	return $this->__construct($table);
+}
+
+function sql_GetObjectQuery()
+{
+	return "select * from $this->tablename";
+}
+
+function fp_OpenClassFile( $lang )
+{
+	if( $lang == "php" )	
+	{
+		$filename = $this->classdir . "/" . $this->classfilename;
+	}
+	else if( $lang == "c" )
+	{
+		$filename = $this->cclassdir . "/" . $this->cclassfilename;
+	}
+	else if( $lang == "cpp" )
+	{
+		$filename = $this->cppclassdir . "/" . $this->cppclassfilename;
+	}
+	else
+	{
+		return NULL;
+	}
+	$fp = fopen( $filename, "w" );
+	if ($fp == NULL)
+	{
+		//error - log it
+		echo "Couldn't open include File $filename";
+		echo "Check that the dir exists";
+		exit(0);
+	}
+	else
+	{
+		return $fp;
+	}
+}
+function fp_OpenViewFile()
+{
+	$filename = $this->viewdir . "/" . $this->tablename . "-form.php";
+	$fp = fopen( $filename, "w" );
+	if ($fp == NULL)
+	{
+		//error - log it
+		echo "Couldn't open include File $filename";
+		echo "Check that the dir exists";
+		exit(0);
+	}
+	else
+	{
+		return $fp;
+	}
+}
+
+function fp_OpenClassHeaderFile()
+{
+/*No longer want to write the include file as it is up to dev's
+ * to use the file to extend the base classes
+ */
+	return NULL;
+	$filename = $this->classdir . "/" . $this->includefilename;
+	$fp = fopen( $filename, "w" );
+	if ($fp == NULL)
+	{
+		//error - log it
+		echo "Couldn't open header File $this->includefilename";
+		echo "Check that the dir exists";
+		exit(0);
+	}
+	else
+	{
+		return $fp;
+	}
+}
+
+function fp_OpenXSLTFile()
+{
+	$filename = $this->viewdir . "/" . $this->tablename . ".xslt"; 
+	$fp = fopen( $filename, "w" );
+	if ($fp == NULL)
+	{
+		//error - log it
+		echo "Couldn't open xslt File $filename";
+		echo "Check that the dir exists";
+		exit(0);
+	}
+	else
+	{
+		return $fp;
+	}
+}
+
+function b_CreateHeader()
+{
+/*Don't create include file*/
+	return SUCCESS;
+	$headerstring = "<?php \n";
+	//$headerstring .= REQR_STR_OPEN . "db.php" . REQR_STR_CLOSE . " \n"; 
+	//$headerstring .= REQR_STR_OPEN . "page.php" . REQR_STR_CLOSE . " \n"; 
+//	$headerstring .= REQR_STR_OPEN . "datatypes.inc" . REQR_STR_CLOSE . " \n"; 
+	$headerstring .= "?>";
+	$fp = $this->fp_OpenClassHeaderFile();
+	fwrite( $fp, $headerstring );
+	fclose ($fp);
+	return SUCCESS;
+}
+
+/*20090308 KF Eventum issue #27 */
+//Merge the various versions of the generator
+//function b_CreateClassFile($queryresults, $colres, $colres2, $app)
+function b_CreateClassFile( $queryresults, $colres, $colres2, $app, $objectmeta = NULL, $lang = "php" )
+{
+//!#27
+	$funcstring = "";
+	$colstring = "";
+	$varstring = "";
+	$funcstring2 = "";
+	$ExtraSQL = "";
+	$includestring = "";
+	$generatedby = "/*This file was generated by calling php " . __FILE__  . " $app $lang */\n\n";
+
+
+	if( $lang == "php" )	
+	{
+		$includeonlystr = "//this script may only be included - so its better to die if called directly.\n";
+		$includeonlystr .= "if ( strpos( $" . "_SERVER[\"SCRIPT_NAME\"], basename(__FILE__) ) !== false ) {\n";
+		$includeonlystr .= "  header( \"location: ../index.php\" );\n";
+		$includeonlystr .= "  exit;\n";
+		$includeonlystr .= "}\n\n";
+		define ("REQR_STR_OPEN", "require_once( '" );
+		define ("REQR_STR_CLOSE", "' );" );
+		define ("INC_STR_OPEN", "include_once( '" );
+		define ("INC_STR_CLOSE", "' );" );
+		define ("DEFINE_STR_OPEN", 'define( "' );
+		define ("DEFINE_STR_MID", '", "' );
+		define ("DEFINE_STR_CLOSE", '" );' );
+		define ("VAR_CHARPTR", '/*char * */ var $' );
+		define ("LANG_THIS", '$this->' );
+		define ("LANG_FUNC_CONSTRUCTOR", 'function __construct()' );
+		define ("LANG_CONSTRUCTOR", '__construct()' );
+		define ("VOID_FUNC", '/*void*/ function ' );
+		define ("FUNCTION_K", 'function ' );
+		define ("CODE_FILENAME_SUFFIX", 'php ' );
+		define ("INCLUDE_FILENAME_SUFFIX", '.inc.php ' );
+		$line1 = "<?php \n";
+		$lastline = "?>";
+		$extension = "php";
+	}
+	else if( $lang == "c" )
+	{
+		$includeonlystr = "\n";
+		define ("REQR_STR_OPEN", "#include \"" );
+		define ("REQR_STR_CLOSE", "\"" );
+		define ("INC_STR_OPEN", "#include \"" );
+		define ("INC_STR_CLOSE", "\"" );
+		define ("DEFINE_STR_OPEN", '#define ' );
+		define ("DEFINE_STR_MID", ' ' );
+		define ("DEFINE_STR_CLOSE", '' );
+		define ("VAR_CHARPTR", 'char *' );
+		define ("LANG_THIS", '' );
+		define ("LANG_FUNC_CONSTRUCTOR", '' );
+		define ("LANG_CONSTRUCTOR", '' );
+		define ("VOID_FUNC", 'void /*function*/ ' );
+		define ("FUNCTION_K", '/*function*/ ' );
+		define ("CODE_FILENAME_SUFFIX", 'c ' );
+		define ("INCLUDE_FILENAME_SUFFIX", '.h ' );
+		$line1 = "\n";
+		$lastline = "/*EOF*/\n";
+		$extension = "c";
+	}
+	else if( $lang == "cpp" )
+	{
+		$includeonlystr = "\n";
+		define ("REQR_STR_OPEN", "#include \"" );
+		define ("REQR_STR_CLOSE", "\"" );
+		define ("INC_STR_OPEN", "#include \"" );
+		define ("INC_STR_CLOSE", "\"" );
+		define ("DEFINE_STR_OPEN", '#define ' );
+		define ("DEFINE_STR_MID", ' ' );
+		define ("DEFINE_STR_CLOSE", '' );
+		define ("VAR_CHARPTR", 'char *' );
+		define ("LANG_THIS", 'this.' );
+		define ("LANG_FUNC_CONSTRUCTOR", "void " . $this->tablename . '()' );
+		define ("LANG_CONSTRUCTOR", "void " . $this->tablename . '()' );
+		define ("VOID_FUNC", 'void /*function*/ ' );
+		define ("FUNCTION_K", '/*function*/ ' );
+		define ("CODE_FILENAME_SUFFIX", 'cpp ' );
+		define ("INCLUDE_FILENAME_SUFFIX", '.h ' );
+		$line1 = "\n";
+		$lastline = "/*EOF*/\n";
+		$extension = "cpp";
+	}
+	else
+	{
+		$includeonlystr = "\n";
+		define ("REQR_STR_OPEN", "" );
+		define ("REQR_STR_CLOSE", "" );
+		define ("INC_STR_OPEN", "" );
+		define ("INC_STR_CLOSE", "" );
+		define ("DEFINE_STR_OPEN", '' );
+		define ("DEFINE_STR_MID", '' );
+		define ("DEFINE_STR_CLOSE", '' );
+		define ("VAR_CHARPTR", "" );
+		define ("LANG_THIS", '/*this*/ ' );
+		define ("LANG_CONSTRUCTOR", '/*construct*/ ' );
+		define ("LANG_FUNC_CONSTRUCTOR", '/*construct*/ ' );
+		define ("VOID_FUNC", '/*void function*/ ' );
+		define ("FUNCTION_K", '/*function*/ ' );
+		define ("CODE_FILENAME_SUFFIX", ' ' );
+		define ("INCLUDE_FILENAME_SUFFIX", ' ' );
+		$line1 = "\n";
+		$lastline = "\n";
+		$extension = "";
+	}
+
+	$filestring = $line1;
+	$filestring .= $generatedby;
+	$filestring .= $includeonlystr;
+
+		if( $lang == "php" )	
+		{
+			//$includefilesstring .= INC_STR_OPEN . $this->includefilename . INC_STR_CLOSE . "\n\n";
+			$includefilesstring = INC_STR_OPEN . "" . $this->tablename . ".extend." . $extension . "" . INC_STR_CLOSE . "\n\n";
+			//$includefilesstring .= INC_STR_OPEN . "" . $this->tablename . ".register." . $extension . "" . INC_STR_CLOSE . "\n\n";
+			//$includefilesstring .= REQR_STR_OPEN . "data/generictable." . $extension . "" . REQR_STR_CLOSE . "\n";
+			$definestring = DEFINE_STR_OPEN . "SUCCESS" . DEFINE_STR_MID . "1" . DEFINE_STR_CLOSE . "\n";
+			$definestring .= DEFINE_STR_OPEN . "FAILURE" . DEFINE_STR_MID . "1" . DEFINE_STR_CLOSE . "\n\n";
+		}
+		else if( $lang == "c" )
+		{
+			$includefilesstring = INC_STR_OPEN . "string.h" . INC_STR_CLOSE . "\n";
+			$includefilesstring .= INC_STR_OPEN . "stdlib.h" . INC_STR_CLOSE . "\n";
+			$includefilesstring .= INC_STR_OPEN . "stdio.h" . INC_STR_CLOSE . "\n\n";
+			$definestring = DEFINE_STR_OPEN . "SUCCESS" . DEFINE_STR_MID . "1" . DEFINE_STR_CLOSE . "\n";
+			$definestring .= DEFINE_STR_OPEN . "FAILURE" . DEFINE_STR_MID . "1" . DEFINE_STR_CLOSE . "\n\n";
+		}
+		else if( $lang == "cpp" )
+		{
+			$includefilesstring = INC_STR_OPEN . "string.h" . INC_STR_CLOSE . "\n";
+			$includefilesstring .= INC_STR_OPEN . "stdlib.h" . INC_STR_CLOSE . "\n";
+			$includefilesstring .= INC_STR_OPEN . "stdio.h" . INC_STR_CLOSE . "\n";
+			$definestring = DEFINE_STR_OPEN . "SUCCESS" . DEFINE_STR_MID . "1" . DEFINE_STR_CLOSE . "\n";
+			$definestring .= DEFINE_STR_OPEN . "FAILURE" . DEFINE_STR_MID . "1" . DEFINE_STR_CLOSE . "\n\n";
+		}
+		else
+		{
+			$includefilesstring = "";
+			$definestring = "";
+		}
+
+	$filestring .= $includefilesstring . $definestring;
+
+	$filestring .= "class $this->tablename extends generictable \n{\n";
+/*20090308 KF Eventum issue #27 */
+//Merge the various versions of the generator
+	//If the object metadata is set, include it here
+//	echo "\nMetadata object type\n";
+//	var_dump( $objectmeta );
+//	echo "\n";
+	if( isset( $objectmeta ) )
+	{
+		$filestring .= "\t" . VAR_CHARPTR . "pretty_name = '" . $objectmeta['pretty_name'] . "';\n";
+                $filestring .= "\t" . VAR_CHARPTR . "pretty_plural = '" . $objectmeta['pretty_plural'] . "';\n";
+                $filestring .= "\t" . VAR_CHARPTR . "pageheader = '" . $objectmeta['pageheader'] . "';\n";
+                $filestring .= "\t" . VAR_CHARPTR . "pagefooter = '" . $objectmeta['pagefooter'] . "';\n";
+		if( !empty( $objectmeta['defaultsort'] ))
+		{
+			$defaultsortstring .= $objectmeta['defaultsort'] . " " . $objectmeta['defaultsortdir'];
+		}
+		else
+			$defaultsortstring = "";
+        }
+//!#27
+	$filestring .= "         private \$observers;\n";
+	//Build Variables List
+	$fieldstring = "         \t" . LANG_THIS . "fieldlist = array('";
+	$colstring .= "         \t" . LANG_THIS . "querytablename = '" . $this->tablename . "';\n";
+	$colstring .= "         \t" . LANG_THIS . "classname = '" . $this->tablename . "';\n";
+	$searchablestring = "         \t" . LANG_THIS . "searchlist = array(";
+	//20090711 KF Eventum 157
+	//Default sort order shows newest rows last
+	//Adding prikeystring to help towards this
+	$prikeystring = "         \t" . LANG_THIS . "prikeylist = array(";
+	$varstring .=   "\t" . VAR_CHARPTR . "data; //data passed in by other calls\n";
+	$varstring .= "/********************************************************\n";
+        $varstring .= " *\n";
+        $varstring .= " *\tThis section is the table columns\n";
+        $varstring .= " *\n";
+        $varstring .= " *******************************************************/\n";
+
+	$DBTstring = REQR_STR_OPEN . "DB/Table/Database.php" . REQR_STR_CLOSE . ";\n\n";
+	$DBDOstring = REQR_STR_OPEN . "DB/DataObject.php" . REQR_STR_CLOSE . ";\n\n";
+	$PQFstring = REQR_STR_OPEN . "HTML/QuickForm.php" . REQR_STR_CLOSE . ";\n\n";
+	$DBTstring .= "class " . $this->tablename . "_table extends DB_Table\n{\n\tvar \$col = array(\n";
+	$DBDOstring .= "class " . $this->tablename . "_object extends DB_DataObject\n{\n\tvar \$__table='" . $this->tablename . "';\n";
+	$DBDOstring .= "\t\t//This is a Structures/DataGrid object\n";
+	$PQFstring .= "\$form = new HTML_QuickForm('" . $this->tablename . "');\n";
+	$PQFdefaults = "\$form->setDefaults( array(\n";
+
+/*
+	$PQF2string = REQR_STR_OPEN . "HTML/QuickForm2.php" . REQR_STR_CLOSE . ";\n";
+	$PQF2string .= REQR_STR_OPEN . "HTML/QuickForm2/Controller.php" . REQR_STR_CLOSE . ";\n";
+	$PQF2string .= REQR_STR_OPEN . "HTML/QuickForm2/Renderer.php" . REQR_STR_CLOSE . ";\n";
+	$PQF2string .= REQR_STR_OPEN . "HTML/QuickForm2/Controller/Action/Next.php" . REQR_STR_CLOSE . ";\n";
+	$PQF2string .= REQR_STR_OPEN . "HTML/QuickForm2/Controller/Action/Back.php" . REQR_STR_CLOSE . ";\n";
+	$PQF2string .= REQR_STR_OPEN . "HTML/QuickForm2/Controller/Action/Jump.php" . REQR_STR_CLOSE . ";\n";
+	$PQF2string .= REQR_STR_OPEN . "HTML/QuickForm2/Controller/Action/Display.php" . REQR_STR_CLOSE . ";\n\n";
+	$PQF2string .= REQR_STR_OPEN . "HTML/QuickForm2/Controller/Action/Submit.php" . REQR_STR_CLOSE . ";\n\n";
+	$PQF2string .= REQR_STR_OPEN . "HTML/QuickForm2/Controller/Action/Direct.php" . REQR_STR_CLOSE . ";\n\n";
+*/
+	$PQF2string = QF2_Required( REQR_STR_OPEN, REQR_STR_CLOSE );
+	$PQF2string .= "session_start();\n\n";
+//Tabbed vs Wizard
+	$PQF2string .= REQR_STR_OPEN . "../model/QF2_TabbedPage.php" . REQR_STR_CLOSE . ";\n\n";
+	$PQF2string .= REQR_STR_OPEN . "../view/QF2_ActionProcess.php" . REQR_STR_CLOSE . ";\n\n";
+//QF2_Pages( $this->tablename, $FirstMiddleLast, $pagenumber, $WizardTabbed )
+
+/*
+	$PQF2P1string = "\nclass " . $this->tablename . "_PageFirst extends TabbedPage\n{\n";
+	//$PQF2P1string = "\nclass " . $this->tablename . "_PageFirst extends HTML_QuickForm2_Controller_Page\n{\n";
+	$PQF2P1string .= "\t protected function populateForm()\n\t{\n";
+	$PQF2P1string .= "\t\t\$this->addTabs();\n";
+	$PQF2P1string .= "\t\t\$this->addGlobalSubmit();\n";
+	$PQF2P1string .= "\t\t\$fs = \$this->form->addElement('fieldset')->setLabel('" . $this->tablename . " page 1');\n";
+	$PQF2P1string .= "\t\t\$buttonGroup = \$fs->addElement('group'); \n";
+	$PQF2P1string .= "\t\t\$buttonGroup->addElement('submit', \$this->getButtonName('next'), array('value' => 'Next >>')); \n";
+	$PQF2P1string .= "\t\t\$this->setDefaultAction('next', 'empty.gif');\n";
+*/	
+	$PQF2P1string = QF2_Pages( $this->tablename, "first", 1, "Tabbed" );
+
+/*
+	$PQF2P2string = "\nclass " . $this->tablename . "_PageSecond extends TabbedPage\n{\n";
+	//$PQF2P2string = "\nclass " . $this->tablename . "_PageSecond extends HTML_QuickForm2_Controller_Page\n{\n";
+	$PQF2P2string .= "\t protected function populateForm()\n\t{\n";
+	$PQF2P2string .= "\t\t\$this->addTabs();\n";
+	$PQF2P2string .= "\t\t\$this->addGlobalSubmit();\n";
+	$PQF2P2string .= "\t\t\$fs = \$this->form->addElement('fieldset')->setLabel('" . $this->tablename . " page 2');\n";
+	$PQF2P2string .= "\t\t\$buttonGroup = \$fs->addElement('group'); \n";
+	$PQF2P2string .= "\t\t\$buttonGroup->addElement('submit', \$this->getButtonName('back'), array('value' => '<< Back')); \n";
+	$PQF2P2string .= "\t\t\$buttonGroup->addElement('submit', \$this->getButtonName('next'), array('value' => 'Next >>')); \n";
+	$PQF2P2string .= "\t\t\$this->setDefaultAction('next', 'empty.gif');\n";
+*/
+
+	$PQF2P2string = QF2_Pages( $this->tablename, "middle", 2, "Tabbed" );
+/*
+	$PQF2P3string = "\nclass " . $this->tablename . "_PageFinish extends TabbedPage\n{\n";
+	//$PQF2P3string = "\nclass " . $this->tablename . "_PageFirst extends HTML_QuickForm2_Controller_Page\n{\n";
+	$PQF2P3string .= "\t protected function populateForm()\n\t{\n";
+	$PQF2P3string .= "\t\t\$this->addTabs();\n";
+	$PQF2P3string .= "\t\t\$this->addGlobalSubmit();\n";
+	$PQF2P3string .= "\t\t\$fs = \$this->form->addElement('fieldset')->setLabel('" . $this->tablename . " Finish');\n";
+	$PQF2P3string .= "\t\t\$buttonGroup = \$fs->addElement('group'); \n";
+	$PQF2P3string .= "\t\t\$buttonGroup->addElement('submit', \$this->getButtonName('back'), array('value' => '<< Back')); \n";
+	$PQF2P3string .= "\t\t\$buttonGroup->addElement('submit', \$this->getButtonName('finish'), array('value' => 'Finish')); \n";
+	$PQF2P3string .= "\t\t\$this->setDefaultAction('finish', 'empty.gif');\n";
+*/
+	$PQF2P3string = QF2_Pages( $this->tablename, "last", 3, "Tabbed" );
+
+
+
+
+
+        $constructorvar = "";
+        $constcount = 0;
+	$elem = array();
+	while ($res = $this->GetRow($colres)) //implicit !NULL
+	{	
+		if (               strtoupper($res['abstract_data_type']) == 'INTEGER'
+                                OR strtoupper($res['abstract_data_type']) == 'SMALLINT'
+                                OR strtoupper($res['abstract_data_type']) == 'BIGINT'
+                                OR strtoupper($res['abstract_data_type']) == 'TINYINT'
+                                OR strtoupper($res['abstract_data_type']) == 'INT'
+                                OR strtoupper($res['abstract_data_type']) == 'MEDIUMINT' )
+
+                        {
+                                $ctype = "int ";
+                                $varind = "i";
+                                $varind = "";
+				$phptype = "var ";
+                        }
+                else if (
+                                strtoupper($res['abstract_data_type']) == 'DECIMAL'
+                                OR strtoupper($res['abstract_data_type']) == 'DOUBLE'
+                                OR strtoupper($res['abstract_data_type']) == 'NUMBER'
+                                OR strtoupper($res['abstract_data_type']) == 'REAL'
+                                OR strtoupper($res['abstract_data_type']) == 'FLOAT'
+                                OR strtoupper($res['abstract_data_type']) == 'PERCENT'
+                                OR strtoupper($res['abstract_data_type']) == 'CURRENCY'
+                                OR strtoupper($res['abstract_data_type']) == 'DOLLAR' )
+                        {
+                                $ctype = "float ";
+                                $varind = "f";
+                                $varind = "";
+				$phptype = "var ";
+                        }
+                else if (
+                                        (strtoupper($res['abstract_data_type']) == 'DATETIME')
+                                OR      (strtoupper($res['abstract_data_type']) == 'DATE')
+                                OR      (strtoupper($res['abstract_data_type']) == 'TIMESTAMP')
+                                OR      (strtoupper($res['abstract_data_type']) == 'TIME')
+                                OR      (strtoupper($res['abstract_data_type']) == 'YEAR')
+                                )
+                        {
+                                $ctype = "char* ";
+                                $varind = "pc";
+                                $varind = "";
+				$phptype = "var ";
+                        }
+                else if (
+                                        (strtoupper($res['abstract_data_type']) == 'BINARY')
+                                OR      (strtoupper($res['abstract_data_type']) == 'SET')
+                                OR      (strtoupper($res['abstract_data_type']) == 'ENUM')
+                                OR      (strtoupper($res['abstract_data_type']) == 'BLOB')
+                                OR      (strtoupper($res['abstract_data_type']) == 'LONGBLOB')
+                                OR      (strtoupper($res['abstract_data_type']) == 'MEDIUMBLOB')
+                                OR      (strtoupper($res['abstract_data_type']) == 'TINYBLOB')
+                                OR      (strtoupper($res['abstract_data_type']) == 'TEXT')
+                                OR      (strtoupper($res['abstract_data_type']) == 'LONGTEXT')
+                                OR      (strtoupper($res['abstract_data_type']) == 'MEDIUMTEXT')
+                                OR      (strtoupper($res['abstract_data_type']) == 'TINYTEXT')
+                                OR      (strtoupper($res['abstract_data_type']) == 'VARBINARY')
+                                )
+                        {
+                                $ctype = "char* ";
+                                $varind = "pc";
+                                $varind = "";
+				$phptype = "var ";
+                        }
+		else
+                        {
+                                $ctype = "char* ";
+                                $varind = "pc";
+                                $varind = "";
+				$phptype = "var ";
+                        }
+
+		$fieldstring .= $res['column_name'];
+//PEAR structures_objects
+//class table_object extends DB_DataObject
+		$DBDOstring .= "\tvar \$" . $res['column_name'] . ";\n";
+//class table_table extends DB_Table
+//	var $col = array (
+//		'upc' => array('type'=>'char', 'require' => true, 'size' => 20),
+		$DBTstring .= "\t'" . $res['column_name'] . "' => array( 'type'=>'" . $res['db_data_type'] . "', 'require'=>";
+		if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+			$DBTstring .= "true";
+		else
+			$DBTstring .= "false";
+		$DBTstring .= ", 'size' =>" . $res['c_size'] . "),\n";
+
+	//QF2 add elements named after their column names since those are unique
+	//Need to add to the right form though
+/*
+	if( strncasecmp( $res['nodisplay'], 'Y', 1 ) == 0 )
+	{
+		$res['html_form_type'] = 'HIDDEN';
+	}
+*/
+	switch( strtoupper( $res['html_form_type'] ) )
+	{
+		case 'HIDDEN':
+				$elem[ $res['form_number'] ] .= "\n\t\t\$" . $res['column_name'] . " = \$fs->addElement('hidden', '" . $res['column_name']  . "', array() )\n";
+				$elem[ $res['form_number'] ] .= "\t\t\t\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t\t->addRule('required', '" . $res['column_name'] . " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= "\t\t;\n";
+/*
+$username->addRule('minlength', 'Username should be at least 5 symbols long', 5, HTML_QuickForm2_Rule::CLIENT_SERVER);
+		nonempty empty required compare eq neq lt lte gt gte regex email callback length minlength maxlength notcallback notregex
+
+HTML_QuickForm2_Factory::registerRule( 'inarray', 'HTML_QuickForm2_Rule_Callback', null, array('callback' => 'in_array'));
+$field->addRule('inarray', 'wrong variable name!', array('foo', 'bar', 'baz'));
+$emailPresent = $email->createRule('nonempty', 'Supply a valid email if you want to receive our spam');
+// note lack of error message here, error should only be set by previous rule
+$emailValid   = $email->createRule('callback', '', array('callback'  => 'filter_var', 'arguments' => array(FILTER_VALIDATE_EMAIL)));
+// note lack of error message for 'empty' rule, we don't want error on a checkbox
+$spamCheck->addRule('empty')
+          ->or_($emailPresent->and_($emailValid));
+$newPassword->addRule('empty')
+            ->and_($repPassword->createRule('empty'))
+            ->or_($newPassword->createRule('minlength', 'The password is too short', 6))
+            ->and_($repPassword->createRule('eq', 'The passwords do not match', $newPassword))
+            ->and_($oldPassword->createRule('nonempty', 'Supply old password if you want to change it'));
+		
+A filter is just a php callback, so any function that is known at the time.  Takes an optional 2nd arg of array of options
+*/
+				break;
+		case 'CURRENTINDEXUSER':
+				$elem[ $res['form_number'] ] .= "\t\t\$this->form->addDataSource(new HTML_QuickForm2_DataSource_Array(array( '" . $res['column_name'] . "' => \$_SERVER['PHP_AUTH_USER'] ) ) );\n";
+				$elem[ $res['form_number'] ] .= "\t\t\$" . $res['column_name'] . " = \$fs->addElement('text', '" . $res['column_name']  . "', array('size' => " . $res['c_size'] . ", 'maxlength' => " . $res['c_size'] . ") )\n";
+				$elem[ $res['form_number'] ] .= "\t\t\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+				//$elem[ $res['form_number'] ] .= "\t\t\t->setContent( '" . $res['default_value']  . "' )\n";
+					$elem[ $res['form_number'] ] .= "\t\t\t->addFilter( 'trim' )\n";
+				if( strncasecmp( $res['field_toupper'], 'YES', 3 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t\t\t->addFilter( 'strtoupper' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t\t\t->addRule('required', '" . $res['column_name'] . " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+/*
+				$elem[ $res['form_number'] ] .= "\t\$" . $res['column_name'] . " = \$fs->addElement('hidden', '" . $res['column_name']  . "', array() )\n";
+				$elem[ $res['form_number'] ] .= "\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setContent( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setId('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setTagName('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setSeparator('" . $res['']  . "' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t->addRule('required', '" . $res['column_name'] . " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+*/
+				break;
+		case 'CURRENTUSER':
+				$elem[ $res['form_number'] ] .= "\t\t\$this->form->addDataSource(new HTML_QuickForm2_DataSource_Array(array( '" . $res['column_name'] . "' => \$_SERVER['PHP_AUTH_USER'] ) ) );\n";
+				$elem[ $res['form_number'] ] .= "\t\t\$" . $res['column_name'] . " = \$fs->addElement('text', '" . $res['column_name']  . "', array('size' => " . $res['c_size'] . ", 'maxlength' => " . $res['c_size'] . ") )\n";
+				$elem[ $res['form_number'] ] .= "\t\t\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+			//	$elem[ $res['form_number'] ] .= "\t\t\t->setDefault( \$_SERVER['PHP_AUTH_USER'] )\n";
+				//$elem[ $res['form_number'] ] .= "\t\t\t->setContent( '" . $res['default_value']  . "' )\n";
+					$elem[ $res['form_number'] ] .= "\t\t\t->addFilter( 'trim' )\n";
+				if( strncasecmp( $res['field_toupper'], 'YES', 3 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t\t\t->addFilter( 'strtoupper' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t\t\t->addRule('required', '" . $res['column_name'] . " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+/*
+				$elem[ $res['form_number'] ] .= "\t\$" . $res['column_name'] . " = \$fs->addElement('hidden', '" . $res['column_name']  . "', array() )\n";
+				$elem[ $res['form_number'] ] .= "\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setContent( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setId('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setTagName('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setSeparator('" . $res['']  . "' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t->addRule('required', '" . $res['column_name'] . " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+*/
+				break;
+		case 'CURRENTDATE':
+				$elem[ $res['form_number'] ] .= "\t\t\$this->form->addDataSource(new HTML_QuickForm2_DataSource_Array(array( '" . $res['column_name'] . "' => date(\"Y-m-d\") ) ) );\n";
+				$elem[ $res['form_number'] ] .= "\t\t\$" . $res['column_name'] . " = \$fs->addElement('text', '" . $res['column_name']  . "', array('size' => " . $res['c_size'] . ", 'maxlength' => " . $res['c_size'] . ") )\n";
+				$elem[ $res['form_number'] ] .= "\t\t\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+				//$elem[ $res['form_number'] ] .= "\t\t\t->setContent( '" . $res['default_value']  . "' )\n";
+					$elem[ $res['form_number'] ] .= "\t\t\t->addFilter( 'trim' )\n";
+				if( strncasecmp( $res['field_toupper'], 'YES', 3 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t\t\t->addFilter( 'strtoupper' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t\t\t->addRule('required', '" . $res['column_name'] . " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+/*
+				$elem[ $res['form_number'] ] .= "\t\$" . $res['column_name'] . " = \$fs->addElement('hidden', '" . $res['column_name']  . "', array() )\n";
+				$elem[ $res['form_number'] ] .= "\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setContent( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setId('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setTagName('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setSeparator('" . $res['']  . "' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t->addRule('required', '" .$res['column_name'] .  " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+*/
+				break;
+		case 'DATESELECT':
+                case 'DATE':
+				$elem[ $res['form_number'] ] .= "\t\t\$f_date = date(\"Y-m-d\" );\n";
+				$elem[ $res['form_number'] ] .= "\t\t\$this->form->addDataSource(new HTML_QuickForm2_DataSource_Array(array( '" . $res['column_name'] . "' => \$f_date ) ) );\n";
+				//$elem[ $res['form_number'] ] .= "\t\t\$this->form->addDataSource(new HTML_QuickForm2_DataSource_Array(array( '" . $res['column_name'] . "' => date(\"Y-m-d\" . '\" onfocus=\"showCalendarControl(this);') ) ) );\n";
+				$elem[ $res['form_number'] ] .= "\t\t\$" . $res['column_name'] . " = \$fs->addElement('text', '" . $res['column_name']  . "', array('size' => " . $res['c_size'] . ", 'maxlength' => " . $res['c_size'] . ") )\n";
+				$elem[ $res['form_number'] ] .= "\t\t\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+				//$elem[ $res['form_number'] ] .= "\t\t\t->setContent( '" . $res['default_value']  . "' )\n";
+					$elem[ $res['form_number'] ] .= "\t\t\t->addFilter( 'trim' )\n";
+				if( strncasecmp( $res['field_toupper'], 'YES', 3 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t\t\t->addFilter( 'strtoupper' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t\t\t->addRule('required', '" . $res['column_name'] . " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+				break;
+/*
+date("Y-m-d H:i:s")
+ 	$dateGroup = $fs->addElement('group', 'favDate')->setLabel( 'Favourite date:')
+                        ->setSeparator('-');
+        for ($i = 1, $doptions = array(); $i <= 31; $i++) {
+            $doptions[$i] = sprintf('%02d', $i);
+        }
+        $dateGroup->addElement('select', 'd')->loadOptions($doptions);
+        $dateGroup->addElement('select', 'M')->loadOptions(array(
+            1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April', 5 => 'May', 5 => 'June',
+            7 => 'July', 8 => 'August', 9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'
+        ));
+        for ($i = 1950, $yoptions = array(); $i <= date('Y'); $i++) {
+            $yoptions[$i] = $i;
+        }
+        $dateGroup->addElement('select', 'Y')->loadOptions($yoptions);
+				$elem[ $res['form_number'] ] .= "\t\$" . $res['column_name'] . " = \$fs->addElement('" . $res['html_form_type'] . "', '" . $res['']  . "', array() )\n";
+				$elem[ $res['form_number'] ] .= "\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setContent( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setId('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setTagName('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setSeparator('" . $res['']  . "' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t->addRule('required', '" . $res['column_name'] . " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+*/
+				$elem[ $res['form_number'] ] .= "\t\t\$" . $res['column_name'] . " = \$fs->addElement('text', '" . $res['column_name']  . "', array('size' => " . $res['c_size'] . ", 'maxlength' => " . $res['c_size'] . ") )\n";
+				$elem[ $res['form_number'] ] .= "\t\t\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+				//$elem[ $res['form_number'] ] .= "\t\t\t->setContent( '" . $res['default_value']  . "' )\n";
+					$elem[ $res['form_number'] ] .= "\t\t\t->addFilter( 'trim' )\n";
+				if( strncasecmp( $res['field_toupper'], 'YES', 3 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t\t\t->addFilter( 'strtoupper' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t\t\t->addRule('required', '" . $res['column_name'] . " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+/*
+				$elem[ $res['form_number'] ] .= "\t\$" . $res['column_name'] . " = \$fs->addElement('" . $res['html_form_type'] . "', '" . $res['']  . "', array() )\n";
+				$elem[ $res['form_number'] ] .= "\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setContent( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setId('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setTagName('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setSeparator('" . $res['']  . "' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t->addRule('required', '" .$res['column_name'] .  " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+*/
+				break;
+ 		case 'CURRENTTIME':
+                case 'TIMESTAMP':
+				$elem[ $res['form_number'] ] .= "\t\t\$f_date = date(\"Y-m-d H:i:s\" );\n";
+				$elem[ $res['form_number'] ] .= "\t\t\$this->form->addDataSource(new HTML_QuickForm2_DataSource_Array(array( '" . $res['column_name'] . "' => \$f_date ) ) );\n";
+				//$elem[ $res['form_number'] ] .= "\t\t\$this->form->addDataSource(new HTML_QuickForm2_DataSource_Array(array( '" . $res['column_name'] . "' => date(\"Y-m-d H:i:s\" . '\" onfocus=\"showCalendarControl(this);') ) ) );\n";
+				$elem[ $res['form_number'] ] .= "\t\t\$" . $res['column_name'] . " = \$fs->addElement('text', '" . $res['column_name']  . "', array('size' => " . $res['c_size'] . ", 'maxlength' => " . $res['c_size'] . ") )\n";
+				$elem[ $res['form_number'] ] .= "\t\t\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+				//$elem[ $res['form_number'] ] .= "\t\t\t->setContent( '" . $res['default_value']  . "' )\n";
+					$elem[ $res['form_number'] ] .= "\t\t\t->addFilter( 'trim' )\n";
+				if( strncasecmp( $res['field_toupper'], 'YES', 3 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t\t\t->addFilter( 'strtoupper' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t\t\t->addRule('required', '" . $res['column_name'] . " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+				break;
+/*
+				$elem[ $res['form_number'] ] .= "\t\$" . $res['column_name'] . " = \$fs->addElement('" . $res['html_form_type'] . "', '" . $res['']  . "', array() )\n";
+				$elem[ $res['form_number'] ] .= "\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setContent( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setId('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setTagName('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setSeparator('" . $res['']  . "' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t->addRule('required', '" . $res['column_name'] . " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+*/
+/*
+				$elem[ $res['form_number'] ] .= "\t\$" . $res['column_name'] . " = \$fs->addElement('" . $res['html_form_type'] . "', '" . $res['']  . "', array() )\n";
+				$elem[ $res['form_number'] ] .= "\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setContent( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setId('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setTagName('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setSeparator('" . $res['']  . "' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t->addRule('required', '" . $res['column_name'] . " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+*/
+		case 'READONLY':
+				break;
+
+		case 'TEXT':
+		case 'LONGTEXT':
+		case 'TEXTAREA':
+		case 'CHAR':
+		case 'VARCHAR':
+		case 'DATETIME':
+		case 'DATE':
+		case 'TIME':
+		case 'BLOB':
+		case 'TINYBLOB':
+		case 'MEDIUMBLOB':
+		case 'LONGBLOB':
+				$elem[ $res['form_number'] ] .= "\t\t\$" . $res['column_name'] . " = \$fs->addElement('text', '" . $res['column_name']  . "', array('size' => " . $res['c_size'] . ", 'maxlength' => " . $res['c_size'] . ") )\n";
+				$elem[ $res['form_number'] ] .= "\t\t\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+				//$elem[ $res['form_number'] ] .= "\t\t\t->setContent( '" . $res['default_value']  . "' )\n";
+					$elem[ $res['form_number'] ] .= "\t\t\t->addFilter( 'trim' )\n";
+				if( strncasecmp( $res['field_toupper'], 'YES', 3 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t\t\t->addFilter( 'strtoupper' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t\t\t->addRule('required', '" . $res['column_name'] . " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+/*
+ 	$fs->addElement('textarea', 'itxaTest', array('rows' => 5, 'cols' => 40))
+           ->setLabel('Parting words:')
+           ->addRule('required', 'Say something!');
+*/
+				break;
+
+		case 'PASSWORD':
+				$elem[ $res['form_number'] ] .= "\t\t\$" . $res['column_name'] . " = \$fs->addElement('password', '" . $res['column_name']  . "', array('size' => " . $res['c_size'] . ", 'maxlength' => " . $res['c_size'] . ") )\n";
+				$elem[ $res['form_number'] ] .= "\t\t\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+					$elem[ $res['form_number'] ] .= "\t\t\t->addFilter( 'trim' )\n";
+				if( strncasecmp( $res['field_toupper'], 'YES', 3 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t\t\t->addFilter( 'strtoupper' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t\t\t->addRule('required', '" . $res['column_name'] . " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+				break;
+
+		case 'INT':
+		case 'TINYINT':
+		case 'INTEGER':
+		case 'SMALLINT':
+				$elem[ $res['form_number'] ] .= "\t\t\$" . $res['column_name'] . " = \$fs->addElement('text', '" . $res['column_name']  . "', array('size' => " . $res['c_size'] . ", 'maxlength' => " . $res['c_size'] . ") )\n";
+				$elem[ $res['form_number'] ] .= "\t\t\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+				//$elem[ $res['form_number'] ] .= "\t\t\t->setContent( '" . $res['default_value']  . "' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t\t\t->addRule('required', '" . $res['column_name'] . " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+				break;
+/*
+case 'int1':
+case 'tinyint':
+$minvalue = -128;
+$maxvalue =127;
+break;
+case 'int2':
+case 'smallint':
+$minvalue = -32768;
+$maxvalue =32767;
+break;
+case 'int3';
+case 'mediumint':
+$minvalue = -8388608;
+$maxvalue =8388607;
+break;
+case 'int':
+case 'int4':
+case 'integer':
+case 'float':
+case 'real':
+$minvalue = -2147483648;
+$maxvalue =2147483647;
+break;
+case 'int8':
+case 'bigint':
+$minvalue = -9223372036854775808;
+$maxvalue =9223372036854775807;
+break;
+case 'boolean':
+$minvalue = 0;
+$maxvalue = 1;
+break;
+case 'percent':
+$minvalue = 0;
+$maxvalue = 100;
+break;
+*/
+
+		case 'FLOAT':
+		case 'DOUBLE':
+		case 'DECIMAL':
+				$elem[ $res['form_number'] ] .= "\t\t\$" . $res['column_name'] . " = \$fs->addElement('text', '" . $res['column_name']  . "', array('size' => " . $res['c_size'] . ", 'maxlength' => " . $res['c_size'] . ") )\n";
+				$elem[ $res['form_number'] ] .= "\t\t\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+				//$elem[ $res['form_number'] ] .= "\t\t\t->setContent( '" . $res['default_value']  . "' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t\t\t->addRule('required', '" . $res['column_name'] . " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+				break;
+
+		case 'FDDL':
+/*
+				$elem[ $res['form_number'] ] .= "\t\$" . $res['column_name'] . " = \$fs->addElement('hidden', '" . $res['column_name']  . "', array() )\n";
+				$elem[ $res['form_number'] ] .= "\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setContent( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setId('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setTagName('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setSeparator('" . $res['']  . "' )\n";
+				if( strncasecmp( $res['field_toupper'], 'YES', 3 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t->addFilter( 'strtoupper' );\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t->addRule('required', '" . $res['column_name'] . " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+HTML_QuickForm2_Factory::registerRule(
+    'inarray', 'HTML_QuickForm2_Rule_Callback', null,
+    array('callback' => 'in_array')
+);
+$field->addRule('inarray', 'wrong variable name!', array('foo', 'bar', 'baz'));
+*/
+				break;
+
+		case 'FRB':
+				$elem[ $res['form_number'] ] .= "\t\$" . $res['column_name'] . " = $fs->addElement('group')\n";
+				$elem[ $res['form_number'] ] .= "\t\t->setContent( '" . $res['pretty_name']  . "' );\n";
+        			$elem[ $res['form_number'] ] .= "\t\$" . $res['column_name'] . "->addElement('radio', 'iradYesNo', array('value' => 'Y'), array('content' => 'Yes'));\n";
+        			$elem[ $res['form_number'] ] .= "\t\$" . $res['column_name'] . "->addElement('radio', 'iradYesNo', array('value' => 'N'), array('content' => 'No'));\n";
+        			$elem[ $res['form_number'] ] .= "\t\$" . $res['column_name'] . "->addRule('required', 'Choose Yes or No');\n";
+/*
+
+echo HTML_QuickForm2_Factory::createElement(
+        'radio', 'aRadio', array('id' => 'radioId', 'value' => 'yes')
+     )->setContent('Click the radio') . "\n";
+
+				$elem[ $res['form_number'] ] .= "\t\$" . $res['column_name'] . " = \$fs->addElement('" . $res['html_form_type'] . "', '" . $res['']  . "', array() )\n";
+				$elem[ $res['form_number'] ] .= "\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setContent( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setId('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setTagName('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setSeparator('" . $res['']  . "' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t->addRule('required', '" .$res['column_name'] . " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+*/
+				break;
+
+		case 'RBYN':
+				$elem[ $res['form_number'] ] .= "\t\$" . $res['column_name'] . " = \$fs->addElement('group')\n";
+				$elem[ $res['form_number'] ] .= "\t\t->setContent( '" . $res['pretty_name']  . "' );\n";
+        			$elem[ $res['form_number'] ] .= "\t\$" . $res['column_name'] . "->addElement('radio', 'iradYesNo', array('value' => 'Y'), array('content' => 'Yes'));\n";
+        			$elem[ $res['form_number'] ] .= "\t\$" . $res['column_name'] . "->addElement('radio', 'iradYesNo', array('value' => 'N'), array('content' => 'No'));\n";
+        			$elem[ $res['form_number'] ] .= "\t\$" . $res['column_name'] . "->addRule('required', 'Choose Yes or No');\n";
+/*
+				$elem[ $res['form_number'] ] .= "\t->setContent( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setId('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setTagName('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setSeparator('" . $res['']  . "' )\n";
+*/
+				break;
+
+		case 'FKSUM':
+		case 'FCHECKBOX':
+/*
+        $checkGroup = $fs->addElement('group', 'favLetter')->setLabel('Favourite letters:')
+                         ->setSeparator(array('&nbsp;', '<br />'));
+        foreach (array('A', 'B', 'C', 'D', 'X', 'Y', 'Z') as $letter) {
+            $checkGroup->addElement('checkbox', $letter)->setContent($letter);
+        }
+echo HTML_QuickForm2_Factory::createElement(
+        'checkbox', 'aBox', array('id' => 'boxId', 'value' => 'yes')
+     )->setContent('Click the checkbox')
+      ->setLabel('Will not be printed here') . "\n";
+				$elem[ $res['form_number'] ] .= "\t\$" . $res['column_name'] . " = \$fs->addElement('checkbox', '" . $res['column_name']  . "', array() )\n";
+				$elem[ $res['form_number'] ] .= "\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setContent( '" . $res['pretty_name']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setId('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setTagName('" . $res['']  . "' )\n";
+				$elem[ $res['form_number'] ] .= "\t->setSeparator('" . $res['']  . "' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t->addRule('required', '" . $res['column_name'] . " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+*/
+				break;
+
+
+
+		default:
+				$elem[ $res['form_number'] ] .= "\t\$" . $res['column_name'] . " = \$fs->addElement('text', '" . $res['column_name']  . "', array() )\n";
+				$elem[ $res['form_number'] ] .= "\t->setLabel( '" . $res['pretty_name']  . "' )\n";
+				//$elem[ $res['form_number'] ] .= "\t->setContent( '" . $res['pretty_name']  . "' )\n";
+					$elem[ $res['form_number'] ] .= "\t->addFilter( 'trim' )\n";
+				if( strncasecmp( $res['field_toupper'], 'YES', 3 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t->addFilter( 'strtoupper' )\n";
+				if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+					$elem[ $res['form_number'] ] .= "\t->addRule('required', '" . $res['column_name'] . " Field Required' );\n";
+				else
+					$elem[ $res['form_number'] ] .= ";\n";
+				break;
+	}
+/********************************************************
+*	QF2 Elements
+*
+
+	$nameGroup = $fs->addElement('group', 'name', array('id' => 'nameGrp'))
+                        ->setLabel('Name:')
+                        ->setSeparator(',&nbsp;');
+        $nameGroup->addElement('text', 'last', array('size' => 20))
+                  ->setLabel('Last')
+                  ->addRule('required', 'Last name is required');
+        $nameGroup->addElement('text', 'first', array('size' => 20))
+                  ->setLabel('first');
+*
+*
+*********************************************************/
+
+//QF2	$fs->addElement('textarea', 'itxaTest', array('rows' => 5, 'cols' => 40))
+//         ->setLabel('Parting words:')
+//         ->addRule('required', 'Say something!');
+//        $nameGroup = $fs->addElement('group', 'name', array('id' => 'nameGrp'))
+//                        ->setLabel('Name:')
+//                        ->setSeparator(',&nbsp;');
+//        $nameGroup->addElement('text', 'last', array('size' => 20))
+//                  ->setLabel('Last')
+//                  ->addRule('required', 'Last name is required');
+//        $nameGroup->addElement('text', 'first', array('size' => 20))
+//                  ->setLabel('first');
+
+
+	if( strncasecmp( $res['noedit'], 'N', 1 ) == 0 )
+	{
+		//$PQFstring .= "\$form->addElement('" . $res['html_form_type'] . "', '" . $res['column_name'] . "', '" . $res['pretty_name'] . "', array( 'size' => " . $res['c_size'] . "));\n";
+		if( strncasecmp( $res['nodisplay'], 'N', 1 ) == 0 )
+		{
+			$PQFstring .= "\$form->addElement('text', '" . $res['column_name'] . "', '" .$res['column_name'] . ": " . $res['pretty_name'] . "', array( 'size' => " . $res['c_size'] . "));\n";
+		}
+		else
+		{
+			$PQFstring .= "\$form->addElement('hidden', '" . $res['column_name'] . "', '" .$res['column_name'] . ": " . $res['pretty_name'] . "', array( 'size' => " . $res['c_size'] . "));\n";
+		}
+		$PQFstring .= "\$form->addRule( '" . $res['column_name'] . "', 'ERROR: Incorrect data type', '" . $res['html_form_type'] . "');\n";
+		if( strncasecmp( $res['mandatory_p'], 'Y', 1 ) == 0 )
+			$PQFstring .= "\$form->addRule( '" . $res['column_name'] . "', 'ERROR: Missing value', 'required');\n";
+		$PQFstring .= "\n";
+		$PQFdefaults .= "\t'" . $res['column_name'] . "' => '" . $res['default_value'] . "',\n";
+	}
+
+//!PEAR structures_objects
+		if ($res['issearchable'] == 1)
+		{
+			$searchablestring .= "'" . $res['column_name'] . "', ";
+		}
+		if (
+			($res['prikey'] == 'y')
+			OR ($res['prikey'] == 'Y')
+		   )
+		{
+			$prikeystring .= "'" . $res['column_name'] . "', ";
+  			if( $constcount > 0 )
+                                $constructorvar .= ", ";
+                        $constructorvar .= $ctype . " " . $res['column_name'];
+                        $constcount++;
+                        $constructorset[] = $res['column_name'];
+		}
+		$fieldstring .= "', '";
+		$totalcount = count ($res);
+		$arrcount = count( $res[0] );
+		$colcount = $totalcount / $arrcount;
+		$keys = $arrcount / 2;
+		for ($j = 0; $j < $colcount; $j++)
+		{
+		  for ($i = 0; $i < $keys; $i++)
+		  {
+			  //Errors out about unsetting string offsets
+			//unset( $res[$j]['$i'] );
+		  }
+	  	}
+		foreach ($res as $key => $value)
+		{
+			if (FALSE == is_numeric($key))
+			{
+				$colstring .= "         \t" . LANG_THIS . "fieldspec['" . $res['column_name'] . "']['$key'] = '$value';\n";
+			}
+		}
+		$colstring .= "         \t" . LANG_THIS . "fieldspec['" . $res['column_name'] . "']['postinsert'] = 'Post" . $res['column_name'] . "Insert';\n";
+		$colstring .= "         \t" . LANG_THIS . "fieldspec['" . $res['column_name'] . "']['postupdate'] = 'Post" . $res['column_name'] . "Update';\n";
+		$colstring .= "         \t" . LANG_THIS . "fieldspec['" . $res['column_name'] . "']['postdelete'] = 'Post" . $res['column_name'] . "Delete';\n";
+		$colstring .= "         \t" . LANG_THIS . "fieldspec['" . $res['column_name'] . "']['preinsert'] = 'Pre" . $res['column_name'] . "Insert';\n";
+		$colstring .= "         \t" . LANG_THIS . "fieldspec['" . $res['column_name'] . "']['preupdate'] = 'Pre" . $res['column_name'] . "Update';\n";
+		$colstring .= "         \t" . LANG_THIS . "fieldspec['" . $res['column_name'] . "']['predelete'] = 'Pre" . $res['column_name'] . "Delete';\n";
+//If we decide to include the default value in the class
+		//$varstring .=   "         var  /*C C*/$" . $res['column_name'] . " = " . $res['default_value'] . ";\n\t\t /*" . $res['pretty_name'] . " */\n";
+//20090926 KF Add db_data_type in comments
+		if( $lang == "php" )	
+		{
+			$varstring .= "         $phptype";
+			$varstring .= "         /*" . $ctype . "*//* " . $res['db_data_type'] . " */ $" . $res['column_name'] . ";\n\t\t /*" . $res['pretty_name'] . " */\n";
+		}
+		else if( $lang == "c" )
+		{
+			$varstring .= "         $ctype /* " . $res['db_data_type'] . " */ ";
+			$varstring .= $varind . $res['column_name'] . ";\n\t\t /*" . $res['pretty_name'] . " */\n";
+		}
+		else if( $lang == "cpp" )
+		{
+			$varstring .= "         $ctype /* " . $res['db_data_type'] . " */ ";
+			$varstring .= $varind . $res['column_name'] . ";\n\t\t /*" . $res['pretty_name'] . " */\n";
+		}
+		else
+		{
+		}
+// /*C C*/
+		$dbactions = array( "Insert", "Update", "Delete" );
+
+		if( $lang == "php" )	
+		{
+			define( "iFUNC_START", "/*int*/ function" );
+			define( "FUNC_PCCHAR", " \$" );
+			define( "FUNC_INT", " \$" );
+			define( "FUNC_PVOID", " \$" );
+		}
+		else if( $lang == "c" )
+		{
+			define( "iFUNC_START", " int" );
+			define( "FUNC_PCCHAR", " char *" );
+			define( "FUNC_INT", "int " );
+			define( "FUNC_PVOID", "void *" );
+		}
+		else if( $lang == "cpp" )
+		{
+			define( "iFUNC_START", " int" );
+			define( "FUNC_PCCHAR", " char *" );
+			define( "FUNC_INT", "int " );
+			define( "FUNC_PVOID", "void *" );
+		}
+		else
+		{
+			define( "iFUNC_START", " " );
+			define( "FUNC_PCCHAR", "/* char * */ " );
+			define( "FUNC_INT", "/* int */ " );
+			define( "FUNC_PVOID", "/* void * */ " );
+		}
+
+		foreach ($dbactions as $value)
+		{
+			$funcstring2 .= "         /********************************************************************\n";
+			$funcstring2 .= "         *	@function Pre" . $res['column_name'] . $value . "\n";
+			$funcstring2 .= "         *	@param " . "" . "\n";
+			$funcstring2 .= "         *	@see " . "" . "\n";
+			$funcstring2 .= "         *	@return int\n";
+			$funcstring2 .= "         ********************************************************************/\n";
+			$funcstring2 .= "         " . iFUNC_START . " Pre" . $res['column_name'] . $value . "( " . FUNC_PCCHAR . "data )\n";
+			$funcstring2 .= "         {\n";
+			$funcstring2 .= "         " . LANG_THIS . "data = \$data;\n";
+				//Eventum framework issue #35
+			$funcstring2 .= "                 if ( is_callable( " . LANG_THIS . "" . $this->tablename . "_Pre" . $res['column_name'] . $value . " ) )\n";
+			$funcstring2 .= "	            return " . LANG_THIS . "" . $this->tablename . "_Pre" . $res['column_name'] . $value . "( \$this );\n";
+			$funcstring2 .= "                 else if ( is_callable( " . $this->tablename . "_Pre" . $res['column_name'] . $value . " ) )\n";
+			$funcstring2 .= "	            return " . $this->tablename . "_Pre" . $res['column_name'] . $value . "( \$this );\n";
+			$funcstring2 .= "                 else if ( is_callable( Pre" . $res['column_name'] . $value . " ) )\n";
+			//$funcstring2 .= "                 if ( is_callable( Pre" . $res['column_name'] . $value . " ) )\n";
+				//!#35
+			$funcstring2 .= "	            return Pre" . $res['column_name'] . $value . "( \$this );\n";
+			$funcstring2 .= "                 else return;\n";
+			$funcstring2 .= "         }\n";
+			$funcstring2 .= "         /********************************************************************\n";
+			$funcstring2 .= "         *	@function Post" . $res['column_name'] . $value . "\n";
+			$funcstring2 .= "         *	@param " . "" . "\n";
+			$funcstring2 .= "         *	@see " . "" . "\n";
+			$funcstring2 .= "         *	@return int\n";
+			$funcstring2 .= "         ********************************************************************/\n";
+			$funcstring2 .= "         " . iFUNC_START . " Post" . $res['column_name'] . $value . "( " . FUNC_PCCHAR . "data, " . FUNC_INT . "lastinsert = 0 )\n";
+			$funcstring2 .= "         {\n";
+			$funcstring2 .= "         " . LANG_THIS . "data = \$data;\n";
+				//Eventum framework issue #35
+			$funcstring2 .= "                 if ( is_callable( " . LANG_THIS . "" . $this->tablename . "_Post" . $res['column_name'] . $value . " ) )\n";
+			$funcstring2 .= "	            \$returnval =  " . LANG_THIS . "" . $this->tablename . "_Post" . $res['column_name'] . $value . "( \$this );\n";
+			$funcstring2 .= "                 else if ( is_callable( " . $this->tablename . "_Post" . $res['column_name'] . $value . " ) )\n";
+			$funcstring2 .= "	            \$returnval =  " . $this->tablename . "_Post" . $res['column_name'] . $value . "( \$this );\n";
+			$funcstring2 .= "                 else if ( is_callable( Post" . $res['column_name'] . $value . " ) )\n";
+			//$funcstring2 .= "                 if ( is_callable( Post" . $res['column_name'] . $value . " ) )\n";
+				//!#35
+			$funcstring2 .= "	            \$returnval =  Post" . $res['column_name'] . $value . "( \$this );\n";
+			$funcstring2 .= "                 else \$returnval = NULL;\n";
+			$funcstring2 .= "                 " . LANG_THIS . "ObserverNotify( \"" . $value . "\", \"" . $res['column_name'] . "\" );\n";
+			$funcstring2 .= "                 return \$returnval;\n";
+			$funcstring2 .= "         }\n";
+		}
+//Don't need the set/get in PHP the way I am handling elsewhere
+		$funcstring2 .= "         /********************************************************************\n";
+		$funcstring2 .= "         *	@function Set" . $res['column_name'] . "\n";
+		$funcstring2 .= "         *	@param " . $res['db_data_type'] . "  \$value \n";
+		$funcstring2 .= "         *	@see " . "" . "\n";
+		$funcstring2 .= "         *	@return bool\n";
+		$funcstring2 .= "         ********************************************************************/\n";
+		$funcstring2 .= "         /*@bool@*/" . iFUNC_START . " Set" . $res['column_name'] . "( " . FUNC_PCCHAR . "value )\n";
+		$funcstring2 .= "         {\n";
+		$funcstring2 .= "                 " . LANG_THIS . "" . $res['column_name'] . " = \$value;\n";
+		$funcstring2 .= "	          return SUCCESS;\n";
+		$funcstring2 .= "         }\n";	
+		$funcstring2 .= "         /********************************************************************\n";
+		$funcstring2 .= "         *	@function Get" . $res['column_name'] . "\n";
+		$funcstring2 .= "         *	@param \n";
+		$funcstring2 .= "         *	@see " . "" . "\n";
+		$funcstring2 .= "         *	@return " . $res['db_data_type'] . "\n";
+		$funcstring2 .= "         ********************************************************************/\n";
+		$funcstring2 .= "         /*@" . $res['db_data_type'] . "@*/" . iFUNC_START . " Get" . $res['column_name'] ."()\n";
+		$funcstring2 .= "         {\n  ";
+		$funcstring2 .= "                  return " . LANG_THIS . "" . $res['column_name'] . ";\n";
+		$funcstring2 .= "         }\n";
+		/*
+		$funcstring2 .= "         /********************************************************************\n";
+		$funcstring2 .= "         *	@function Validate" . $res['column_name'] . "\n";
+		$funcstring2 .= "         *	@param " . "" . "\n";
+		$funcstring2 .= "         *	@see " . "" . "\n";
+		$funcstring2 .= "         *	@return bool\n";
+		$funcstring2 .= "         ******************************************************************** /\n";
+		$funcstring2 .= "         \/*@bool@*\/" . iFUNC_START . " Validate" . $res['column_name'] . "()\n";
+		$funcstring2 .= "         {\n";
+		$funcstring2 .= "                  if (" . iscoltype . "(\$value))\n";
+		$funcstring2 .= "                  {\n";
+		$funcstring2 .= "                           return TRUE;\n";
+		$funcstring2 .= "                  }\n";	
+		$funcstring2 .= "                  else\n";	
+		$funcstring2 .= "                  {\n";
+		$funcstring2 .= "                           return FALSE;\n";
+		$funcstring2 .= "                  }\n";
+		$funcstring2 .= "         }\n";
+*/
+//20111210 KF setValues through metadata_setvalues
+		/*
+		//get the list of columns from metadata_setvalues...
+		$queryrowcount = 0;
+		$setvalueset = "";
+		$setvaluetop = "";
+		$setvaluequery = "" . LANG_THIS . "where = \"";
+		foreach ($res as $row)
+		{
+			$setvaluetop .= "                 if( !isset( " . LANG_THIS . "" . $row[''] . " ))\n";
+			$setvaluetop .= "                 \treturn FALSE\n";
+			if( $queryrowcount > 0 )
+				$setvaluequery .= " and ";
+			$setvaluequery .= $row[''] . " = '\" . " . LANG_THIS . "Get" . $row[''] . "() . \"'";
+			$queryrowcount++;
+		}
+		$setvalueset .= "                 if ( isset( ( " . LANG_THIS . "resultarray[0]['" $res['column_name'] . "'] ) )\n";
+		$setvalueset .= "                 {\n";
+		$setvalueset .= "                       $this->Set" . $res['column_name'] . "( " . LANG_THIS . "resultarray[0]['" $res['column_name'] . "'] ) )\n";
+		$setvalueset .= "                 }\n";
+		*/
+/*
+*               //Requires that date and symbol are set
+*                if( !isset( $this->date ))
+*                  return FALSE;
+*                if( !isset( $this->symbol ))
+*                  return FALSE;
+*
+*                $this->where = "symbol = '" . $this->Getsymbol() . "' and date = '" . $this->Getdate() . "'";
+*
+*                $this->Select();
+*                if( isset( $this->resultarray[0]['previous_close'] ) )
+*                {
+*                  $this->Setprevious_close($this->resultarray[0]['previous_close']);
+*                }
+*               return TRUE;
+*/
+
+	//generateWSDL();
+	}
+	$DBTstring .= "\t);\n";
+	$DBTstring .= "};\n";
+	$DBDOstring .= "};\n";
+	$PQFdefaults .= "\t)\n);\n";
+// if ($form->validate()) {
+//        // if valid, freeze the form
+//                $form->freeze();
+	$PQFstring .= $PQFdefaults . "\n";
+	$PQFstring .= "\$form->addElement('submit', null, 'Submit');\n\n";
+	$PQFstring .= "\tif ( \$form->validate() )\n\t{\n";
+	$PQFstring .= "\t\t\$form->freeze();\n";
+	$PQFstring .= "\t\t//Now do something with the data\n";
+	$PQFstring .= "\t};\n";
+	$PQFstring .= "\n";
+	$PQFstring .= "echo '<html><body>';\n";
+	$PQFstring .= "\t\$form->display();\n";
+	$PQFstring .= "echo '</body></html>';\n";
+	
+
+
+
+	$fieldstring = rtrim( $fieldstring, "', "); //remove the last comma as it is extra due to the above while loop.
+	$searchablestring = rtrim( $searchablestring, ", ");
+	$prikeystring = rtrim( $prikeystring, ", ");
+	$fieldstring .= "');\n";
+	$searchablestring .= ");\n";
+	$prikeystring .= ");\n";
+	$funcstring .= "         " . LANG_FUNC_CONSTRUCTOR . "\n";
+		$funcstring .= "         {\n";
+		$funcstring .= $colstring;
+		$funcstring .= $fieldstring;
+		$funcstring .= $searchablestring;
+		$funcstring .= $prikeystring;
+		$funcstring .= "\t\t" . LANG_THIS . "defaultsort = '" . $defaultsortstring . "';\n"; 
+	//!157
+		$funcstring .= $ExtraSQL;
+		$funcstring .= "	         return SUCCESS;\n";
+		$funcstring .= "         }\n";
+		$funcstring .= "         " . VOID_FUNC . " $this->tablename()\n";
+		$funcstring .= "         { //For older php which doesn't have constructor\n";
+		$funcstring .= "              return " . LANG_THIS . LANG_CONSTRUCTOR . ";\n";
+		$funcstring .= "         }\n";
+		$funcstring .= "         /*@bool@*/" . iFUNC_START . " Push()\n";
+		$funcstring .= "         {\n";	
+		$funcstring .= "	         \$_SESSION['$this->tablename'] = serialize(\$this);\n";
+		$funcstring .= "	         return SUCCESS;\n";	
+		$funcstring .= "         }\n";
+		$funcstring .= "         /*@bool@*/" . iFUNC_START . " Pop()\n";
+		$funcstring .= "         {\n";	
+		$funcstring .= "                 //Can't do this in self - this is how to do it outside\n";
+		$funcstring .= "	       //  \$this = unserialize(\$_SESSION['$this->tablename']);\n";
+		$funcstring .= "	         return SUCCESS;\n";
+		$funcstring .= "         }\n";
+
+		//OBSERVER PATTERN
+		$funcstring .= "         /********************************************************************\n";
+		$funcstring .= "         *	@function ObserverRegister\n";
+		$funcstring .= "         *	@param class " . $observer . "\n";
+		$funcstring .= "         *	@param string " . $event . "\n";
+		$funcstring .= "         *	@see " . "" . "\n";
+		$funcstring .= "         *	@return bool\n";
+		$funcstring .= "         ********************************************************************/\n";
+		$funcstring .= "         /*@bool@*/" . iFUNC_START . " ObserverRegister( " . FUNC_PVOID . "observer, " . FUNC_INT . "event )\n";
+		$funcstring .= "         {\n";	
+		$funcstring .= "                 " . LANG_THIS . "observers[\$event][] = \$observer;\n";
+		$funcstring .= "	         return SUCCESS;\n";
+		$funcstring .= "         }\n";
+		$funcstring .= "         /********************************************************************\n";
+		$funcstring .= "         *	@function ObserverDeRegister\n";
+		$funcstring .= "         *	@param class " . $observer . "\n";
+		$funcstring .= "         *	@see " . "" . "\n";
+		$funcstring .= "         *	@return bool\n";
+		$funcstring .= "         ********************************************************************/\n";
+		$funcstring .= "         /*@bool@*/" . iFUNC_START . " ObserverDeRegister( \$observer )\n";
+		$funcstring .= "         {\n";	
+		$funcstring .= "                 " . LANG_THIS . "observers[] = array_diff( " . LANG_THIS . "observers, array( \$observer) );\n";
+		$funcstring .= "	         return SUCCESS;\n";
+		$funcstring .= "         }\n";
+		$funcstring .= "         /********************************************************************\n";
+		$funcstring .= "         *	@function ObserverNotify\n";
+		$funcstring .= "         *	@param string " . $event . "\n";
+		$funcstring .= "         *	@param string " . $msg . "\n";
+		$funcstring .= "         *	@see " . "" . "\n";
+		$funcstring .= "         *	@return bool\n";
+		$funcstring .= "         ********************************************************************/\n";
+		$funcstring .= "         /*@bool@*/" . iFUNC_START . " ObserverNotify( " . FUNC_INT . "event, " . FUNC_PCCHAR . "msg )\n";
+		$funcstring .= "         {\n";	
+		$funcstring .= "                 if ( isset( " . LANG_THIS . "observers[\$event] ) )\n";	
+		$funcstring .= "                 \tforeach ( " . LANG_THIS . "observers[\$event] as \$obs ) \n";
+		$funcstring .= "                 \t{\n";
+		$funcstring .= "                      \t\t\$obs->notify( \$event, \$msg );\n";
+		$funcstring .= "                 \t}\n"; 
+		$funcstring .= "                 /* '**' being used as 'ALL' */\n"; 
+		$funcstring .= "                 if ( isset( " . LANG_THIS . "observers['**'] ) )\n";	
+		$funcstring .= "                 \tforeach ( " . LANG_THIS . "observers['**'] as \$obs ) \n";
+		$funcstring .= "                 \t{\n";
+		$funcstring .= "                      \t\t\$obs->notify( \$event, \$msg );\n";
+		$funcstring .= "                 \t}\n"; 
+		$funcstring .= "	         return SUCCESS;\n";
+		$funcstring .= "         }\n";
+		$funcstring .= "         /********************************************************************\n";
+		$funcstring .= "         *	@function notify\n";
+		$funcstring .= "         *	@param class " . $object . "\n";
+		$funcstring .= "         *	@see " . "" . "\n";
+		$funcstring .= "         *	@return bool\n";
+		$funcstring .= "         ********************************************************************/\n";
+		$funcstring .= "         /*@bool@*/" . iFUNC_START . " notify( " . FUNC_PVOID . "object )\n";
+		$funcstring .= "         {\n";	
+		$funcstring .= "                 //Called when another object we are observing sends us a notification\n";
+		$funcstring .= "	         return SUCCESS;\n";
+		$funcstring .= "         }\n";
+
+		$mstring = "";
+		//The codemeta table metadata_functions may have additional functions to be included
+		$this->query = "select * from metadata_functions where application = '$app' and table_name = '$this->tablename' and codelanguage = '" . $lang . "'";
+		$this->Query();
+		if( isset( $this->result ))
+		{
+			while( ($row = $this->GetRow($this->result)) != NULL)
+			{
+		//		var_dump( $row );
+				//grab the fields and create functions
+				$mfunc = "\t/*" . $row['returntype'] . "*//*C " . $row['returntype'] . " C*/ " . FUNCTION_K . " " . $row['function_name'] . "(" . $row['function_arguments'] . ")\n\t{\n";
+				$mfuncpurpose = "\t\t/*" . $row['function_purpose'] . "*/";
+				$mfuncpurpose .= "\n\t\t/*This function is generated by the generator from codemeta_functions*/\n";
+//20111207 KF adding additional data from meta_func
+				$mfuncpurpose .= "\t\t/*\tRequirements: " . $row['rth_Component'] . " " . $row['rth_ReqNumber'] . "*/\n";
+				$mfuncpurpose .= "\t\t/*\tUse Case Who: " . $row['usecase_who'] . "*/\n";
+				$mfuncpurpose .= "\t\t/*\tUse Case When: " . $row['usecase_when'] . "*/\n";
+				$mfuncpurpose .= "\t\t/*\tUse Case What: " . $row['usecase_what'] . "*/\n";
+				$mfuncpurpose .= "\t\t/*\tUse Case Why: " . $row['usecase_why'] . "*/\n";
+				$mfuncpurpose .= "\t\t/*\tAuthor: " . $row['author'] . "*/\n";
+//20111207 !meta_func
+				$mfuncvar = "\t\t" . str_replace( "\r\n", "\n\t\t", $row['function_variables'] ) . "\n";
+				$mfuncbody = "\t\t" . str_replace( "\r\n", "\n\t\t", $row['function_body'] ) . "\n";
+				$mfuncbody .= "\t\t//If we don't have a return in the body in codemeta, return\n";
+				$mfuncbody .= "\t\treturn " . $row['returnvalue'] . ";\n";
+				$mfuncbody .= "\t}\n";
+
+				$mstring .= $mfunc . $mfuncpurpose . $mfuncvar . $mfuncbody;
+		//		var_dump( $mstring );
+			}
+		}
+			
+		
+	$PQF2P1string .= $elem[1];
+	$PQF2P2string .= $elem[2];
+	$PQF2P3string .= $elem[3];
+
+	$PQF2P1string .= "\t}\n}\n";
+	$PQF2P2string .= "\t}\n}\n";
+	$PQF2P3string .= "\t}\n}\n";
+	//Set attributes of the columns into arrays
+	$output = $filestring . $includestring . $varstring . $funcstring . $funcstring2 . $mstring;
+	$output .= "} /* class $this->tablename */\n";
+	//$output .= "\n" . $DBTstring . $DBDOstring . $lastline;
+	$output .= "\n" . $DBTstring . $DBDOstring . $PQF2string . $PQF2P1string . $PQF2P2string . $PQF2P3string . $lastline;
+	$fp = $this->fp_OpenClassFile( $lang );
+	fwrite( $fp, $output );
+	fclose ($fp);
+	$fpv = $this->fp_OpenViewFile();
+	fwrite( $fpv, "<?php\n" . $PQFstring . "\n?>" );
+	fclose ($fpv);
+
+	return SUCCESS;
+}
+
+function b_CreateXSLTFile($queryresults, $colres, $colres2)
+{	
+	
+	$topstring = ' <xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0" xmlns="HTTP://WWW.W3.ORG/1999/XHTML">';
+
+	$matchstring = '<xsl:template match="/"> <xsl:apply-templates select="ROOT/*" /> </xsl:template>';
+
+	$setstring = '<xsl:template match="RECORDSET"> <xsl:apply-templates/> </xsl:template>';
+	$recordstring = '<xsl:template match="RECORD"> <xsl:apply-templates/> </xsl:template>';
+	$rowstring = "";
+	while ($res = $this->GetRow($colres)) //implicit !NULL
+	{	
+		$rowstring .= '<xsl:template match="' . $res['column_name'] . '"> <xsl:apply-templates/> </xsl:template>';
+	}
+	$endstring = '</xsl:stylesheet>';
+	
+	$output = $topstring . $matchstring . $setstring . $recordstring . $rowstring . $endstring;
+	$fp = $this->fp_OpenXSLTFile();
+	fwrite( $fp, $output );
+	fclose ($fp);
+
+	return SUCCESS;
+}
+
+function BuildRegister( $app )
+{
+        $this->query = "select table_name, column_name from codemeta.metadata_elements where foreign_table = '$this->tablename'";
+        $this->db->SetQuery( $this->query );
+        $this->db->Query();
+        $out = "<?php\n";
+        $out .= "function " . $this->tablename . "RegisterOthers()\n";
+        $out .= "{\n";
+
+        while( $row = mysql_fetch_array( $this->db->result ) )
+        {
+                echo "\nRow returned:\n";
+                var_dump( $row );
+                echo "\n";
+                //create $classname.register.php
+                $out .= "\t@include_once( '" . $row['table_name'] . ".class.php' );\n";
+                $out .= "\t\$observer = new " . $row['table_name'] . "();\n";
+                $out .= "\t\$table->ObserverRegister( \$observer, 'CREATE' );\n";
+                $out .= "\t\$table->ObserverRegister( \$observer, 'REPLACE' );\n";
+                $out .= "\t\$table->ObserverRegister( \$observer, 'UPDATE' );\n";
+                $out .= "\t\$table->ObserverRegister( \$observer, 'DELETE' );\n";
+        }
+        $out .= "}\n";
+        $out .= "?>";
+        $filename = $this->classdir . "/" .  $this->tablename . ".register.php";
+        echo "\nOutfile = $filename\n";
+        $fp = fopen( $filename, "w" );
+        if ($fp == NULL)
+        {
+                //error - log it
+                echo "Couldn't open register File $filename";
+                echo "Check that the dir exists";
+                exit(0);
+        }
+        echo "Register text: $out\n";
+        fwrite( $fp, $out );
+        fclose( $fp );
+        return SUCCESS;
+}
+
+
+function Settablename($name)
+{
+	$this->tablename = $name;
+	return SUCCESS;
+}
+function BuildQuery( $app )
+{
+	//$this->query = "select * from codemeta.metadata_elements where table_name = '$this->tablename'";
+	//$this->query = "select * from codemeta.metadata_elements where table_name = '$this->tablename' order by form_sort_key";
+	$this->query = "select * from codemeta.metadata_elements where table_name = '$this->tablename' and application='$app' order by form_sort_key";
+	return SUCCESS;
+}
+function ObjectQuery( $app )
+{
+	$this->query = "select * from codemeta.metadata_object_types where table_name = '$this->tablename' and application='$app'";
+	return SUCCESS;
+}
+function Query()
+{
+	$this->db = new my_db("localhost", "codemeta", "codemeta", "codemeta");
+	$this->db->SetQuery($this->query);
+	$this->db->Query();
+	$this->result = $this->db->result;
+	return SUCCESS;
+}
+function GetRow($res)
+{
+	$this->db->result = $res;
+	return $this->db->FetchRow();
+}
+
+function CreateObjects($app, $lang = "php")
+{
+	$this->BuildQuery( $app );
+	$this->Query();
+	$res = $this->result;
+	$this->ObjectQuery( $app );
+	$this->Query();
+	$meta = $this->GetRow($this->result);
+	$this->b_CreateClassFile($res, $res, $res, $app, $meta, $lang);
+	//$this->BuildRegister( $app );
+	//$this->b_CreateHeader();
+	return SUCCESS;
+}
+
+
+function CreateXSLT( $app )
+{
+	$this->BuildQuery( $app );
+	$this->Query();
+	$res = $this->result;
+	$this->b_CreateXSLTFile($res, $res, $res);
+	return SUCCESS;
+}
+
+
+function b_CreateSQLFile($result)
+{
+	$prikeyar = array();
+	$statement = "";
+	//$statement .="---\n\r"; 
+	//$statement .="--- Table struct for table $this->tablename\n\r"; 
+	//$statement .="---\n\r"; 
+	$statement .= "DROP TABLE IF EXISTS `$this->tablename`;\n\r";
+	$statement .= "CREATE TABLE `$this->tablename` (\n\r";
+	while ($row = $this->GetRow($result))
+	{
+		//Init values
+		$column = $type = $size = $unsigned = $zerofill = $NULL = $autoinc = $default = $comment = $PRIKEY = "";
+		$column = $row['column_name'];
+		$type = $row['db_data_type'];
+		$size = $row['c_size'];
+		if ($row['c_unsigned'] == 'Y')
+		{
+			$unsigned = "unsigned";
+		}
+		if ($row['c_zerofill'] == 'Y')
+		{
+			$zerofill = "zerofill";
+		}
+		if (strncmp($row['field_null'], "Y", 1) == 0)
+		{
+			$NULL = "NULL";
+		}
+		else
+		{
+			$NULL = "NOT NULL";
+		}	
+		if ($row['c_auto_increment'] == 'Y')
+		{
+			$autoinc = "auto_increment";
+		}
+		if ($row['prikey'] == 'Y')
+		{
+			$prikeyar[] = $row['column_name'];
+			var_dump($prikeyar);
+		}
+		$defval = $row['default_value'];
+		$default = "default '$defval'";
+		$commentval = $row['pretty_name'];
+		$comment = "comment '$commentval'";
+		//If Comment -> COMMENT ''
+		//If default -> default ''
+		//PRIKEY = (`key1`, `key2`)
+		$statement .= "`$column` $type($size) $unsigned $zerofill $NULL $autoinc $default $comment,\n\r";
+	}
+	$statement = rtrim( rtrim( $statement ), ",");
+	if (count($prikeyar) < 2 AND count($prikeyar) > 0)
+	{
+		$PRIKEY = "`" . $prikeyar[0] . "`";
+	}
+	else if( count( $prikeyar ) > 0 )
+	{
+		$PRIKEY = "`" . $prikeyar[0] . "`";
+		foreach ($prikeyar as $key=> $value)
+		{
+			$PRIKEY .= ", '" . $value . "'";
+		}
+	}
+	$statement .= ", PRIMARY KEY ($PRIKEY)";
+	$statement .= ") ENGINE=InnoDB;\n";
+	$fp = fopen( "sql/" . $this->tablename . ".sql", "w");
+	if ($fp == NULL)
+	{
+		echo "couldn't open $this->tablename .sql.  Check dir exists";
+		exit(0);
+	}
+	fputs( $fp, $statement );
+	fclose( $fp );
+}
+
+
+function CreateTableSQL( $app )
+{
+	$this->BuildQuery( $app );
+	$this->Query();
+	$res = $this->result;
+	$this->b_CreateSQLFile($res, $res, $res);
+	$fp = fopen( 'tasks.default.sql', 'a' );
+	$description = "$this->tablename";
+	$filename = "";
+	$tasktype = 'MENU';
+	$parent = 'NULL';
+	$insertstatementmenu = "INSERT ignore into tasks( tasktype, taskdescription, tasklink, taskparent) values ('$tasktype', '$description', '$filename', '$parent');\n";
+	$filename = $this->classdir . '/' . $this->tablename . '.insert.php';
+	$description = "Insert into $this->tablename";
+	$tasktype = 'TASK';
+	$parent = "$this->tablename";
+	$insertstatementinsert = "INSERT ignore into tasks( tasktype, taskdescription, tasklink, taskparent) values ('$tasktype', '$description', '$filename', '$parent');\n";
+/* 20090629 KF Removing the replace/update/delete menu choices as they are taken care of by the framework by links to the rows.
+	$filename = $this->classdir . '/' . $this->tablename . '.replace.php';
+	$description = "Replace into $this->tablename";
+	$tasktype = 'TASK';
+	$parent = "$this->tablename";
+	$insertstatementreplace = "INSERT ignore into tasks( tasktype, taskdescription, tasklink, taskparent) values ('$tasktype', '$description', '$filename', '$parent');\n";
+	$filename = $this->classdir . '/' . $this->tablename . '.update.php';
+	$description = "Update $this->tablename";
+	$tasktype = 'TASK';
+	$parent = "$this->tablename";
+	$insertstatementupdate = "INSERT ignore into tasks( tasktype, taskdescription, tasklink, taskparent) values ('$tasktype', '$description', '$filename', '$parent');\n";
+	$filename = $this->classdir . '/' . $this->tablename . '.delete.php';
+	$description = "Delete from $this->tablename";
+	$tasktype = 'TASK';
+	$parent = "$this->tablename";
+	$insertstatementdelete = "INSERT into tasks( tasktype, taskdescription, tasklink, taskparent) values ('$tasktype', '$description', '$filename', '$parent');\n";
+*/
+	$filename = $this->classdir . '/' . $this->tablename . '.search.php';
+	$description = "Search $this->tablename";
+	$tasktype = 'TASK';
+	$parent = "$this->tablename";
+	$insertstatementsearch = "INSERT ignore into tasks( tasktype, taskdescription, tasklink, taskparent) values ('$tasktype', '$description', '$filename', '$parent');\n";
+	$filename = $this->classdir . '/' . $this->tablename . '.list.php';
+	$description = "Show $this->tablename";
+	$tasktype = 'TASK';
+	$parent = "$this->tablename";
+	$insertstatementlist = "INSERT ignore into tasks( tasktype, taskdescription, tasklink, taskparent) values ('$tasktype', '$description', '$filename', '$parent');\n";
+	fwrite( $fp, $insertstatementmenu );
+	fwrite( $fp, $insertstatementinsert );
+	//fwrite( $fp, $insertstatementreplace );
+	//fwrite( $fp, $insertstatementupdate );
+	//fwrite( $fp, $insertstatementdelete );
+	fwrite( $fp, $insertstatementlist );
+	fwrite( $fp, $insertstatementsearch );
+	fwrite( $fp, "insert into roletask (idtasks) SELECT idtasks FROM tasks t where t.idtasks not in (select idtasks from roletask);\n" );
+	fwrite( $fp, "update roletask set roles_id = 1 where roles_id = NULL;\n" );
+
+	fclose( $fp );
+	return SUCCESS;
+}
+
+
+function CreatePatterns( $lang )
+{
+
+	if( $lang == "php" )	
+	{
+		$includeonlystr = "//this script may only be included - so its better to die if called directly.\n";
+		$includeonlystr .= "if ( strpos( $" . "_SERVER[\"SCRIPT_NAME\"], basename(__FILE__) ) !== false ) {\n";
+		$includeonlystr .= "  header( \"location: ../index.php\" );\n";
+		$includeonlystr .= "  exit;\n";
+		$includeonlystr .= "}\n\n";
+		define ("REQR_STR_OPEN", "require_once( '" );
+		define ("REQR_STR_CLOSE", "' );" );
+		define ("INC_STR_OPEN", "include_once( '" );
+		define ("INC_STR_CLOSE", "' );" );
+		define ("DEFINE_STR_OPEN", 'define( "' );
+		define ("DEFINE_STR_MID", '", "' );
+		define ("DEFINE_STR_CLOSE", '" );' );
+		define ("VAR_CHARPTR", '/*char * */ var $' );
+		define ("LANG_THIS", '$this->' );
+		define ("LANG_FUNC_CONSTRUCTOR", 'function __construct()' );
+		define ("LANG_CONSTRUCTOR", '__construct()' );
+		define ("VOID_FUNC", '/*void*/ function ' );
+		define ("FUNCTION_K", 'function ' );
+		define ("CODE_FILENAME_SUFFIX", 'php ' );
+		define ("INCLUDE_FILENAME_SUFFIX", '.inc.php ' );
+		$line1 = "<?php \n";
+		$lastline = "?>";
+		$extension = "php";
+	}
+	else if( $lang == "c" )
+	{
+		$includeonlystr = "\n";
+		define ("REQR_STR_OPEN", "#include \"" );
+		define ("REQR_STR_CLOSE", "\"" );
+		define ("INC_STR_OPEN", "#include \"" );
+		define ("INC_STR_CLOSE", "\"" );
+		define ("DEFINE_STR_OPEN", '#define ' );
+		define ("DEFINE_STR_MID", ' ' );
+		define ("DEFINE_STR_CLOSE", '' );
+		define ("VAR_CHARPTR", 'char *' );
+		define ("LANG_THIS", '' );
+		define ("LANG_FUNC_CONSTRUCTOR", '' );
+		define ("LANG_CONSTRUCTOR", '' );
+		define ("VOID_FUNC", 'void /*function*/ ' );
+		define ("FUNCTION_K", '/*function*/ ' );
+		define ("CODE_FILENAME_SUFFIX", 'c ' );
+		define ("INCLUDE_FILENAME_SUFFIX", '.h ' );
+		$line1 = "\n";
+		$lastline = "/*EOF*/\n";
+		$extension = "c";
+	}
+	else if( $lang == "cpp" )
+	{
+		$includeonlystr = "\n";
+		define ("REQR_STR_OPEN", "#include \"" );
+		define ("REQR_STR_CLOSE", "\"" );
+		define ("INC_STR_OPEN", "#include \"" );
+		define ("INC_STR_CLOSE", "\"" );
+		define ("DEFINE_STR_OPEN", '#define ' );
+		define ("DEFINE_STR_MID", ' ' );
+		define ("DEFINE_STR_CLOSE", '' );
+		define ("VAR_CHARPTR", 'char *' );
+		define ("LANG_THIS", 'this.' );
+		define ("LANG_FUNC_CONSTRUCTOR", "void " . $this->tablename . '()' );
+		define ("LANG_CONSTRUCTOR", "void " . $this->tablename . '()' );
+		define ("VOID_FUNC", 'void /*function*/ ' );
+		define ("FUNCTION_K", '/*function*/ ' );
+		define ("CODE_FILENAME_SUFFIX", 'cpp ' );
+		define ("INCLUDE_FILENAME_SUFFIX", '.h ' );
+		$line1 = "\n";
+		$lastline = "/*EOF*/\n";
+		$extension = "cpp";
+	}
+	else
+	{
+		$includeonlystr = "\n";
+		define ("REQR_STR_OPEN", "" );
+		define ("REQR_STR_CLOSE", "" );
+		define ("INC_STR_OPEN", "" );
+		define ("INC_STR_CLOSE", "" );
+		define ("DEFINE_STR_OPEN", '' );
+		define ("DEFINE_STR_MID", '' );
+		define ("DEFINE_STR_CLOSE", '' );
+		define ("VAR_CHARPTR", "" );
+		define ("LANG_THIS", '/*this*/ ' );
+		define ("LANG_CONSTRUCTOR", '/*construct*/ ' );
+		define ("LANG_FUNC_CONSTRUCTOR", '/*construct*/ ' );
+		define ("VOID_FUNC", '/*void function*/ ' );
+		define ("FUNCTION_K", '/*function*/ ' );
+		define ("CODE_FILENAME_SUFFIX", ' ' );
+		define ("INCLUDE_FILENAME_SUFFIX", ' ' );
+		$line1 = "\n";
+		$lastline = "\n";
+		$extension = "";
+	}
+
+	$prefix = $this->classdir . "/" . $this->tablename;
+	//Create the files for list, update, delete, insert
+	$filename =  $prefix . ".insert.php"; 
+	$fp = fopen( $filename, "w" );
+	if ($fp == NULL)
+	{
+		//error - log it
+		echo "Couldn't open $filename .  CHeck the dir exists";
+		exit(0);
+	}
+	$output = "<?php\n";
+	//$output .= REQR_STR_OPEN . "" . $this->classfilename . "" . REQR_STR_CLOSE . "\n";
+	//$output .= "\$table = new " . $this->tablename . "();\n";
+	$output .= "\$thisclass = '$this->tablename' ;\n";
+	$output .= '$mode = "insert";' . "\n";
+	$output .= REQR_STR_OPEN . "" . $this->controllerdir . "/" . $this->controllername . "" . REQR_STR_CLOSE . "\n";
+	$output .= "?>\n";
+	fwrite( $fp, $output );
+	fclose ($fp);
+
+	$filename = $prefix . ".replace.php"; 
+	$fp = fopen( $filename, "w" );
+	if ($fp == NULL)
+	{
+		//error - log it
+		echo "Couldn't open $filename .  CHeck the dir exists";
+		exit(0);
+	}
+	$output = "<?php\n";
+	//$output .= REQR_STR_OPEN . "" . $this->classfilename . "" . REQR_STR_CLOSE . "\n";
+	//$output .= "\$table = new " . $this->tablename . "();\n";
+	$output .= "\$thisclass = '$this->tablename' ;\n";
+	$output .= '$mode = "replace";' . "\n";
+	$output .= REQR_STR_OPEN . "" . $this->controllerdir . "/" . $this->controllername . "" . REQR_STR_CLOSE . "\n";
+	//$output .= REQR_STR_OPEN . "" . $this->controllerdir . "/controller.php');\n";
+	//$output .= REQR_STR_OPEN . "controller/controller.php');\n";
+	$output .= "?>\n";
+	fwrite( $fp, $output );
+	fclose ($fp);
+
+	$filename = $prefix . ".update.php"; 
+	$fp = fopen( $filename, "w" );
+	if ($fp == NULL)
+	{
+		//error - log it
+		echo "Couldn't open $filename .  CHeck the dir exists";
+		exit(0);
+	}
+	$output = "<?php\n";
+	//$output .= REQR_STR_OPEN . "" . $this->classfilename . "" . REQR_STR_CLOSE . "\n";
+	//$output .= "\$table = new " . $this->tablename . "();\n";
+	$output .= "\$thisclass = '$this->tablename' ;\n";
+	$output .= '$mode = "update";' . "\n";
+	$output .= REQR_STR_OPEN . "" . $this->controllerdir . "/" . $this->controllername . "" . REQR_STR_CLOSE . "\n";
+	//$output .= REQR_STR_OPEN . "controller/controller.php" . REQR_STR_CLOSE . "\n";
+	//$output .= REQR_STR_OPEN . "" . $this->controllerdir . "/controller.php" . REQR_STR_CLOSE . "\n";
+	$output .= "?>\n";
+	fwrite( $fp, $output );
+	fclose ($fp);
+
+	$filename = $prefix . ".delete.php"; 
+	$fp = fopen( $filename, "w" );
+	if ($fp == NULL)
+	{
+		//error - log it
+		echo "Couldn't open $filename .  CHeck the dir exists";
+		exit(0);
+	}
+	$output = "<?php\n";
+	//$output .= REQR_STR_OPEN . "" . $this->classfilename . "" . REQR_STR_CLOSE . "\n";
+	//$output .= "\$table = new " . $this->tablename . "();\n";
+	$output .= "\$thisclass = '$this->tablename' ;\n";
+	$output .= '$mode = "delete";' . "\n";
+	$output .= REQR_STR_OPEN . "" . $this->controllerdir . "/" . $this->controllername . "" . REQR_STR_CLOSE . "\n";
+	//$output .= REQR_STR_OPEN . "" . $this->controllerdir . "/controller.php" . REQR_STR_CLOSE . "\n";
+	//$output .= REQR_STR_OPEN . "controller/controller.php" . REQR_STR_CLOSE . "\n";
+	$output .= "?>\n";
+	fwrite( $fp, $output );
+	fclose ($fp);
+
+	$filename = $prefix . ".list.php"; 
+	$fp = fopen( $filename, "w" );
+	if ($fp == NULL)
+	{
+		//error - log it
+		echo "Couldn't open $filename .  CHeck the dir exists";
+		exit(0);
+	}
+	$output = "<?php\n";
+	//$output .= REQR_STR_OPEN . "" . $this->classfilename . "" . REQR_STR_CLOSE . "\n";
+	//$output .= "\$table = new " . $this->tablename . "();\n";
+	$output .= "\$thisclass = '$this->tablename' ;\n";
+	$output .= '$mode = "list";' . "\n";
+	$output .= REQR_STR_OPEN . "" . $this->controllerdir . "/" . $this->controllername . "" . REQR_STR_CLOSE . "\n";
+	//$output .= REQR_STR_OPEN . "" . $this->controllerdir . "/controller.php" . REQR_STR_CLOSE . "\n";
+	//$output .= REQR_STR_OPEN . "controller/controller.php" . REQR_STR_CLOSE . "\n";
+	$output .= "?>\n";
+	fwrite( $fp, $output );
+	fclose ($fp);
+
+	$filename = $prefix . ".search.php"; 
+	$fp = fopen( $filename, "w" );
+	if ($fp == NULL)
+	{
+		//error - log it
+		echo "Couldn't open $filename .  CHeck the dir exists";
+		exit(0);
+	}
+	$output = "<?php\n";
+	//$output .= REQR_STR_OPEN . "" . $this->classfilename . "" . REQR_STR_CLOSE . "\n";
+	//$output .= "\$table = new " . $this->tablename . "();\n";
+	$output .= "\$thisclass = '$this->tablename';\n";
+	$output .= '$mode = "search";' . "\n";
+	$output .= REQR_STR_OPEN . "" . $this->controllerdir . "/" . $this->controllername . "" . REQR_STR_CLOSE . "\n";
+	//$output .= REQR_STR_OPEN . "" . $this->controllerdir . "/controller.php" . REQR_STR_CLOSE . "\n";
+	//$output .= REQR_STR_OPEN . "controller/controller.php" . REQR_STR_CLOSE . "\n";
+	$output .= "?>\n";
+	fwrite( $fp, $output );
+	fclose ($fp);
+
+}
+
+} /*class my_generator*/
+
+$includefilename = ""; 
+$classfilename = ""; 
+
+$mydb = new my_db("localhost", "codemeta", "codemeta", "codemeta");
+if (isset($argv[1]))
+{
+	$mydb->SetQuery("select distinct(table_name) from codemeta.metadata_elements where application='$argv[1]'");
+}
+else
+{
+	$mydb->SetQuery("select distinct(table_name) from codemeta.metadata_elements");
+}
+$result = $mydb->Query();
+while ($res = $mydb->FetchRow())
+{
+	foreach ($res as $key => $value)
+	{
+		if (FALSE == is_numeric( $key ))
+		{
+			$gen = new my_generator($value);
+			echo " Language is $argv[2]\n";
+			$gen->CreateObjects($argv[1], $argv[2]);
+			//$gen->CreateXSLT( $argv[1] );
+			$gen->CreatePatterns( $argv[2] );
+			$gen->CreateTableSQL( $argv[1] );
+		}
+
+	}
+}
+exit(0);
+
+?>

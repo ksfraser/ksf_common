@@ -1,0 +1,28 @@
+<?php
+
+//this script may only be included - so its better to die if called directly.
+if (strpos($_SERVER["SCRIPT_NAME"],basename(__FILE__)) !== false) {
+header("location: index.php");
+exit;
+}
+
+//20120218 KF These options are for using Structures/DataGrid.php
+//require 'Structures/DataGrid.php';
+
+// Instantiate the DataGrid
+//$datagrid =& new Structures_DataGrid();
+// Setup your database connection
+$datagrid_dbuser = 'dbusername';
+$datagrid_dbpass = 'dbpassword';
+$server = 'localhost';
+$datagrid_dbname = 'databasename';
+$datagrid_dboptions = array(
+        'dsn' => 'mysql://$datagrid_dbuser:$datagrid_dbpass@$server/$datagrid_dbname',
+        'proxy' => 'full',
+        'debug' => 0,
+        'generate_columns' => true,
+        );
+//!20120218 Datagrid
+
+
+?>

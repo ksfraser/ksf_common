@@ -1,0 +1,26 @@
+<?php
+
+// Define the Look and Feel
+$tableAttribs = array(
+    'width' => '100%',
+    'cellspacing' => '0',
+    'cellpadding' => '4',
+    'class' => 'datagrid'
+);
+$headerAttribs = array(
+    'bgcolor' => '#CCCCCC'
+);
+$evenRowAttribs = array(
+    'bgcolor' => '#FFFFFF'
+);
+$oddRowAttribs = array(
+    'bgcolor' => '#EEEEEE'
+);
+$rendererOptions = array(
+    'sortIconASC' => '&uArr;',
+    'sortIconDESC' => '&dArr;',
+    'delta' => '5'
+);
+
+
+?>
