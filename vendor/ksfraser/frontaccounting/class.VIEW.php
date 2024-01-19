@@ -2,7 +2,10 @@
 
 require_once( 'class.origin.php' );
 
-
+/**//**********************************************************
+* This is a FrontAccounting specific VIEW class
+*
+**************************************************************/
 class VIEW extends origin
 {
 	var $js;
@@ -14,32 +17,56 @@ class VIEW extends origin
 	var $db_result;			//MYSQL Result pointer
 	var $use_date_picker;
 	var $db_table_pager; 		// = & new_db_pager( $this->table_name, $this->sql, $this->col_array );
-	var $table_width;
-	var $help_context;
-	var $page_elements;
+	var $table_width;		//!<integer percentage whole number
+	protected $use_popup_window;	//!<bool
+	public $help_context;
+	var $page_elements;		//!<array
+	protected $table_style;		//!<integer def TABLESTYLE
 
-	/**//****************************************************
-	* Constructor
+        /**//****************************************************
+        * Constructor
+        *
+	*	WAS function __construct( $use_popup_window = FALSE ) in one version
+	*	WAS function __construct( $help_context = "", $page_mode = "simple", $use_date_picker = FALSE ) in another version
 	*
-	* @param string help context
-	* @returns none
-	*/
-	function __construct( $help_context = "", $page_mode = "simple", $use_date_picker = FALSE )
+	* @since 20240119
+        * @param string help context
+        * @param string page mode default simple
+        * @param bool use the ajax date picker default false
+        * @param bool use the ajax popup window default false
+        * @returns none
+        */
+	function __construct( $help_context = "", $page_mode = "simple", $use_date_picker = FALSE, $use_popup_window = FALSE )
 	{
-		$this->set_var( "help_context", $help_context );
-		$this->set_var( "page_mode", $page_mode );
-		$this->set_var( "use_date_picker", $use_date_picker );
-		$this->set_var( "table_width", "70%" );
-		//$this->use_js();
+		parent::__construct();
+		$this->js = "";
+                $this->set_var( "help_context", $help_context );
+                $this->set_var( "page_mode", $page_mode );
+                $this->set_var( "use_date_picker", $use_date_picker );
+                $this->set_var( "table_width", "70%" );
+		$this->set_var( "use_popup_window", $use_popup_window );
+		$this->set( "table_style", TABLESTYLE );
 		$this->page_elements = array();
 	}
 	function __destruct()
 	{
 	}
-	function addPageElements( $element )
-	{
-		$this->page_elements[] = $element;
-	}
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
+        function addPageElements( $element )
+        {
+                $this->page_elements[] = $element;
+        }
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
 	function run()
 	{
 		$display_notification( __FILE__ . "::" . __CLASS__ . "::"  . __METHOD__ . ":" . __LINE__, "WARN" );
@@ -47,18 +74,42 @@ class VIEW extends origin
 		$this->build_page();
 		$this->end_page();
 	}
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
 	function display_error( $error )
 	{
 		display_error(_( $error ) );
 	}
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
 	function display_notification( $msg )
 	{
 		display_notification(_( $msg ) );
 	}
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
 	function set_focus( $field )
 	{	
 		set_focus( $field );
 	}
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
 	function new_page()
 	{
 		if( $this->page_mode == "simple" )
@@ -66,18 +117,42 @@ class VIEW extends origin
 			simple_page_mode(true);
 		}
 	}
-	function start_form($bool = true)
-	{
-		start_form( $bool );
-	}
-	function new_form($bool = true)
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
+        function start_form( $bool = true )
+        {
+                start_form( $bool );
+        }
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
+	function new_form( $bool = true )
 	{
 		$this->start_form( $bool );
 	}
+	/**//***********************
+	* Create a new Table
+	*
+	* Normally would do sanity check on variables but they are set in the constructor.
+	*
+	**************************/
 	function new_table()
 	{
-		start_table(TABLESTYLE, "width=75%");
+		start_table( $this->get( "table_style" ), "width=" . $this->get( "table_width" ) . "%");
 	}
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
 	function table_header()
 	{
 		//$this->header_row = array(_("Asset Type"),_("Asset Name"),_("Serial Number"), _("Purchase Date"),
@@ -85,6 +160,12 @@ class VIEW extends origin
 		inactive_control_column($this->header_row);
 		table_header($this->header_row);
 	}
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
 	function db_pager( $model )
 	{
 /*
@@ -94,6 +175,12 @@ class VIEW extends origin
 		display_db_pager( $table );
 */
 	}
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
 	function db_result2rows()
 	{
 		if( isset( $this->db_result ) )
@@ -134,6 +221,12 @@ class VIEW extends origin
 
 		}
 	}
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
 	function edit_table()
 	{
 		$this->start_table();
@@ -164,51 +257,91 @@ class VIEW extends origin
 		}
 		$this->end_table();
 	}
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
 	function end_table()
 	{
 		end_table(1);
 	}
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
 	function end_form()
 	{
 		end_form();
 	}
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
 	function end_page()
 	{
 		end_page();
 	}
-	/**//**
-	*Use JS
-	*
-	* @param none 
-	* @returns none
-	*/
-	function use_js()
+        /**//**
+        *Use JS
+        *
+        * @param none
+        * @returns none
+        */
+	function use_js(  )
 	{
-		$this->js = "";
 		if ($this->use_date_picker)
         		$this->js .= get_js_date_picker();
-
-		page(_($this->help_context), false, false, "", $this->js);
-
+		if( $this->use_popup_window )
+			$this->js .= get_js_open_window(900, 500);
 
 	}
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
 	function Page()
 	{
-		page(_($this->help_context), false, false, "", $this->js);
+		page(_( $this->help_context ), false, false, "", $this->js);
 	}
-	function display()
-	{
-		foreach( $this->page_elements as $element )
-		{
-			$element->display();
-		}
-	}
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
+        function display()
+        {
+                foreach( $this->page_elements as $element )
+                {
+                        $element->display();
+                }
+        }
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
 	function build_page()
 	{
 		//need to take the form, tables etc for the page
 		//and create them to be displayed
 		$this->display();
 	}
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
 	function dropdown( $label, $choices_array )
 	{
 		/*
@@ -222,18 +355,42 @@ class VIEW extends origin
 		*/
 		echo "<td>" . $label . ":</td>\n<td>" . array_selector( $name, null, $choices_array ) . "</td>\n";
 	}
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
 	function bool( $row, $caller )
 	{
 		text_row($row['label'], $row['pref_name'], $caller->$row['pref_name'], 1, 1);
 	}
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
 	function textrow( $row, $caller )
 	{
 		text_row($row['label'], $row['pref_name'], $caller->$row['pref_name'], 20, 40);
 	}
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
 	function number( $row, $caller )
 	{
 		amount_row( _($row['label']), $row['pref_name'], null, null, null, 2);
 	}
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
 	function date( $row, $caller )
 	{
 		//date_row($label, $name, $title=null, $check=null, $inc_days=0, $inc_months=0, $inc_years=0, $params=null, $submit_on_change=false)
@@ -258,6 +415,16 @@ class VIEW extends origin
                         )
                 );
 */
+	/**//*************************************
+	*
+	* 
+	* @param
+	* @returns
+	*****************************************/
+	function start_row()
+	{
+		start_row();
+	}
 
 }
 

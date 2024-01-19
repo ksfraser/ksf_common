@@ -18,16 +18,27 @@ class ksf_file extends fa_origin
 	protected $filename;	//!< @var string name of output file
 	protected $tmp_dir;	//!< @var string temporary directory name
 	protected $path;	//!<DIR where are the images stored.  default company/X/images...
+	protected $file_contents;	//!<binary data stream - file contents
+	protected $bDeleteFile;	//!<bool should we delete the file once we are done with it.
+	protected $linecount;	//!<int
 	function __construct( $filename = "file.txt" )
 	{
 		parent::__construct();
 		$this->filename = $filename;
 		$this->path = company_path() . '/images';
+		$this->bDeleteFile = false;
 	}
 	function __destruct()
 	{
 		if( isset( $this->fp ) )
 			$this->close();
+		if( $this->bDeleteFile )
+		{
+			if( file_exists( $this->filename ) )
+			{
+				unlink( $this->filename );
+			}
+		}
 	}
 	function open()
 	{
@@ -76,7 +87,11 @@ class ksf_file extends fa_origin
 	/*@bool@*/function fileExists()
 	{
 		$this->validateVariables();
-		return file_exists( $this->path . '/' . $this->filename );
+		$exists = file_exists( $this->path . '/' . $this->filename );
+		if ( !is_file($this->_sourceFile) || !is_readable($this->_sourceFile)) {
+           		return false;
+        	}
+		return $exists;
 	}
 	function validateVariables()
 	{
@@ -84,6 +99,75 @@ class ksf_file extends fa_origin
 			throw new Exception( "Path variable not set" );
 		if( !isset( $this->filename )  )									throw new Exception( "filename variable not set" );
 	}
+	/**//***************************************************************
+	* Use PHP functions to read the file contents entire.
+	*
+	* @param none uses internal variables
+	* @returns none sets internal variables
+	********************************************************************/
+	function getFileContents()
+	{
+		if( ! isset( $this->filename ) )
+		{
+			throw new Exception( "Filename not set.  Can't read an unspecified file", KSF_FIELD_NOT_SET );
+		}
+		$this->file_contents = file_get_contents($this->filename);
+	}
+	/**//***************************************************************
+	* Grab a filename from the webserver after an upload.
+	*
+	* @param int id which file (on multi upload) to grab.  Default 0
+	* @returns none sets internal variables
+	********************************************************************/
+	function uploadFileName( $id = 0 )
+	{
+		if( ! isset( $_FILES ) )
+		{
+			throw new Exception( "Can't set a filename when one not passed in", KSF_VAR_NOT_SET );
+		}
+		$this->filename = $_FILES['files']['tmp_name'][$id];
+	}
+	/**//********************************************************************************
+     	* Remove the BOM (Byte Order Mark) from the beginning of the import row if it exists
+	*
+	* This function came from SuiteCRM ImportFile
+	*
+	* @param none
+     	* @return void
+     	*/
+    	private function setFpAfterBOM()
+    	{
+        	if($this->fp === FALSE)
+            		return;
+        	rewind($this->fp);
+        	$bomCheck = fread($this->fp, 3);
+        	if($bomCheck != pack("CCC",0xef,0xbb,0xbf)) {
+            		rewind($this->fp);
+        	}
+    	}
+
+	/**//*************************************************************************
+     	* Determine the number of lines in this file.
+     	*
+     	* @return int
+     	*/
+    	function getNumberOfLinesInfile()
+    	{
+        	$lineCount = 0;
+        	if ($this->fp )
+        	{
+            		rewind($this->_fp);
+            		while( !feof($this->_fp) )
+            		{
+                		if( fgets($this->_fp) !== FALSE)
+                    			$lineCount++;
+            		}
+            		//Reset the fp to after the bom if applicable.
+            		$this->setFpAfterBOM();
+        	}
+		$this->linecount = $lineCount;
+        	return $lineCount;
+    	}
 
 }
 
@@ -266,6 +350,19 @@ class ksf_file_csv extends ksf_file
 	protected $b_skip_header;
 	private $grabbed_header;
 	protected $headerline;
+	protected $enclosure;	//!<char
+	protected $escapechar;	//!<char
+	protected $fieldcount;	//!<int
+	/**//******************************************
+	* Setup the CSV reading class file
+	*
+	* @param string filename
+	* @param int size of a line
+	* @param char separator what character separates the CSV
+	* @param bool is there a header
+	* @param bool b_skip_header skip processing the header
+	* @return none
+	***********************************************/
 	function __construct( $filename, $size, $separator, $b_header = false, $b_skip_header = false )
 	{
 		parent::__construct( $filename );
@@ -275,7 +372,17 @@ class ksf_file_csv extends ksf_file
 		$this->b_header = $b_header;
 		$this->b_skip_header = $b_skip_header;
 		$this->grabbed_header = false;
+		$this->enclosure = null;
+		$this->escapechar = null;
+		$this->fieldcount = 0;
+		$this->linecount = 0;
 	}
+	/**//**************************************************
+	* Read a line from a CSV file
+	*
+	* @param none
+	* @returns array the csv line split up.
+	*******************************************************/
 	/*@array@*/function readcsv_line()
 	{
 		if( !isset( $this->fp )  )
@@ -284,17 +391,24 @@ class ksf_file_csv extends ksf_file
 			throw new Exception( __CLASS__ . " required field not set: size" );
 		if( ! isset( $this->separator ) )
 			throw new Exception( __CLASS__ . " required field not set: separator" );
-			if( $this->b_header AND !$this->grabbed_header )
-			{
-				$this->headerline = fgetcsv( $this->fp, $this->size, $this->separator );
-				$this->grabbed_header = true;
-			}
-			if( ! $this->b_header )
-				$this->headerline = '';
-			else
-			{
-			}
-			return fgetcsv( $this->fp, $this->size, $this->separator );
+		if( $this->b_header AND !$this->grabbed_header )
+		{
+			//fgetcsv( resource $stream, ?int $length = null, string $separator = ",", string $enclosure = "\"", string $escape = "\\"): array|false
+			$this->headerline = fgetcsv( $this->fp, $this->size, $this->separator, $this->enclosure, $this->escapechar );
+			$this->grabbed_header = true;
+		}
+		if( ! $this->b_header )
+			$this->headerline = '';
+		else
+		{
+		}
+		$line = fgetcsv( $this->fp, $this->size, $this->separator );
+		if( ! $this->fieldcount )
+		{
+			$this->set( "fieldcount", count( $line ) );
+		}
+		$this->linecount++;
+		return $line;
 	}
 	function readcsv_entire()
 	{
