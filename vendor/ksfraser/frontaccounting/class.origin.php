@@ -19,13 +19,13 @@ require_once( 'defines.inc.php' );
  * Base class for ksf common...  throws EXCEPTIONS for try/catch loops
  *
  * Provides:
-   	function __construct( $loglevel = PEAR_LOG_DEBUG )
+        function __construct( $loglevel = PEAR_LOG_DEBUG )
         /*@NULL@* /function set_var( $var, $value )
         function get_var( $var )
         /*@array@* /function var2data()
         /*@array@* /function fields2data( $fieldlist )
         /*@NULL@* /function LogError( $message, $level = PEAR_LOG_ERR )
-	/*@NULL@* /function LogMsg( $message, $level = PEAR_LOG_INFO )
+        /*@NULL@* /function LogMsg( $message, $level = PEAR_LOG_INFO )
         public function __call($method, $arguments)
         function __get( $prop ) {
         function __isset( $prop ) {
@@ -60,14 +60,17 @@ class origin
 	protected $application;		//!< string which application is the child object holding data for
 	protected $module;		//!< string which module is the child object holding data for
 	protected $container_arr;	//__get/__isset uses this
+	protected $obj_var_name_arr;	//Array of field names in this object that need to be translated in the NVL array
+	protected $dest_var_name_arr;	//Array of field names in the DEST Object for translating.
+	protected $name_value_list;
 
 	/************************************************************************//**
 	 *constructor
 	 *
 	 *@param $loglevel int PEAR log levels
-	 *
+	 *@param $param_arr to allow extending classes to accept values in their constructor
 	 * ***************************************************************************/
-	function __construct( $loglevel = PEAR_LOG_DEBUG )
+	function __construct( $loglevel = PEAR_LOG_DEBUG, $param_arr = null )
 	{
 		global $db_connections;
 		if( isset( $_SESSION['wa_current_user'] ) )
@@ -89,6 +92,17 @@ class origin
 		$this->log = array();
 		//Set, with end of constructor values noted
 		$this->object_var_names();
+		$this->obj_var_name_arr = array();
+		$this->dest_var_name_arr = array();
+		$this->name_value_list = array();
+		if( is_array( $param_arr ) )
+		{
+			foreach( $param_arr as $key=>$val)
+			{
+				//Set those values.  But only do native ones
+				$this->set( $key, $val, true );
+			}
+		}
 	}
 	/*********************************************************//**
 	 * Magic call method example from http://php.net/manual/en/language.types.object.php
@@ -154,6 +168,7 @@ class origin
 		$rtn = array ();
 		//private prefixed by class name, protected by *
     		$rtn['___SOURCE_KEYS_'] = $clone;
+//EACH is depreciated
     		while ( list ($key, $value) = each ($clone) ) {
         		$aux = explode ("\0", $key);
         		$newkey = $aux[count($aux)-1];
@@ -217,6 +232,16 @@ class origin
 		else
 			throw new Exception( "Value to be set not passed in", KSF_VALUE_NOT_SET );
 	}
+	/**//*******************************************
+	 * Nullify a field
+	 *
+	 * @param field string variable to nullify
+	 */
+	function unset_var( $field )
+	{
+		$this->$field = null;
+		unset( $this->$field );
+	}
 	/***************************************************//**
 	 * Most of our existing code does not use TRY/CATCH so we will trap here
 	 *
@@ -258,6 +283,7 @@ class origin
 		{
 			$this->data[$f] = $this->get_var( $f );
 		}
+                return $this->data;
 	}
 	/*@array@*/function fields2data( $fieldlist )
         {
@@ -279,6 +305,27 @@ class origin
 		if( $level <= $this->loglevel )
 			$this->log[] = $message;
 		return;
+	}
+	/***************************************************************//**
+	* Create a Name-Value pair as part of an array.  Can replace KEYS
+	*
+	******************************************************************/
+ 	/*@array@*/function objectvars2array()
+        {
+                $val = array();
+                foreach( get_object_vars( $this ) as $key => $value )
+                {
+			if( count( $this->dest_var_name_arr ) > 0 )
+			{
+				//No point trying to convert key names if we don't have destination names to convert to.
+                        	$key = str_replace( $this->obj_var_name_arr, $this->dest_var_name_arr, $key );
+			}
+			//if( "id" != $key )	//Not used for CREATE but needed for UPDATE.
+				if( isset( $this->$key ) )
+		                        $val[] = array( "name" => $key, "value" => $this->$key );
+                }
+		$this->name_value_list = $val;
+                return $val;
 	}
 }
 

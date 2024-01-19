@@ -14,13 +14,94 @@ $path_to_faroot = dirname ( realpath ( __FILE__ ) ) . "/../../";
  * out of table_interface and woo_interface.
  *
  * Inherits:
+*        function __construct( $loglevel = PEAR_LOG_DEBUG )
+*        /*@NULL@* /function set_var( $var, $value )
+*        function get_var( $var )
+*        /*@array@* /function var2data()
+*        /*@array@* /function fields2data( $fieldlist )
+*        /*@NULL@* /function LogError( $message, $level = PEAR_LOG_ERR )
+*        /*@NULL@* /function LogMsg( $message, $level = PEAR_LOG_INFO )
+*        public function __call($method, $arguments)
+*        function __get( $prop ) {
+*        function __isset( $prop ) {
+*        function is_supported_php() {
+*        function object_var_names()
+*        function user_access( $action )
+*        function set( $field, $value = null, $enforce_only_native_vars = true )
+*        /*@NULL@*/function set_var( $var, $value )
+*        function get( $field )
+*        function get_var( $var )
+*        /*@array@*/function var2data()
+*        /*@array@*/function fields2data( $fieldlist )
+*        /*@NULL@*/function LogError( $message, $level = PEAR_LOG_ERR )
+*        /*@NULL@*/function LogMsg( $message, $level = PEAR_LOG_INFO )
+*
  * Provides:
+*	function __construct( $client = null )
+*        function __destruct()
+*        function run( $action )
+*        function backtrace()
+*        function build_interestedin()
+*        function db_pager( $model )
+*        function db_result2rows()
+*        /*@bool@*/function set( $field, $value = null, $enforce_only_native_vars = true )//:bool
+*        function get_fields_array_row( $field )
+*        /*@bool@*/function validate( $data_value, $data_type )
+*        /*none*/function select_row(  $set_caller = false )
+*        /*@mysql_result@*/function select_table($fieldlist = "*", /*@array@*/$where = null, /*@array@*/$orderby = null, /*@int@*/$limit = null)
+*        function query( $msg )
+*        function delete_table()
+*        function update_table()
+*        /*@bool@*/function check_table_for_id()
+*        /*@int@*/function insert_table()
+*        function create_table()
+*        function alter_table()
+*        /*@int@*/function count_rows()
+*        /*@int@*/function count_filtered($where = null)
+*        /*string*/function getPrimaryKey()
+*        /*none*/function getByPrimaryKey()
+*        function buildLimit()
+*        function ReplaceQuery( $b_validate_in_table = false)
+*        function buildSelect( $b_validate_in_table = false)
+*        function buildFrom()
+*        function buildWhere( $b_validate_in_table = false)
+*        function buildOrderBy( $b_validate_in_table = false)
+*        function buildGroupBy( $b_validate_in_table = false)
+*        function buildHaving( )
+*        function buildJoin()
+*        function buildSelectQuery( $b_validate_in_table = false )
+*        function clear_sql_vars()
+*        function assoc2var( $assoc )
+*        function stdClass2var( $stdclass )
+*        function var2caller()
+*        function define_table()
+*        function build_write_properties_array()
+*        function get_properties_field_name( $row )
+*        function get_properties_external_field_name( $field )
+*        function build_properties_array()
+*        function build_foreign_objects_array()
+*        function array2var( $data_array )
+*        /*@int@*/function extract_data_array( $assoc_array )
+*        function build_data_array()
+*        function reset_values()
+*        function extract_data_objects( $srvobj_array )
+*        /*@int@*/function extract_data_obj( $srvobj )
+*        function build_json_data()
+*        /*@bool@*/function prep_json_for_send( $func = NULL )
+*        function ll_walk_insert_fa()
+*        function ll_walk_update_fa()
+*        function import_fields_array( $obj )
+*        function import_table_details( $obj )
+*        public function build_model_related_arrays()
+*        function obj_fields2me( $obj )
+*        public function obj_insert_or_update( $obj )
+*
  * *****************************************************************************/
 class MODEL extends origin
 {
 	var $client;
-	var $caller;
-	var $view;
+	var $caller;	//client was variable caller in table_interface.
+	var $view;	//As this is a MODEL class, we probably shouldn't have a view link...that's what the controller is for.
 
 	var $db_column_name = array();
 	var $db_result;			//MYSQL Result pointer
@@ -213,6 +294,10 @@ class MODEL extends origin
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Exiting ");
 		return false;
 	}
+	/*********************************************
+	*	Do we inherit GET?
+	*/
+
 	/*******************************************************//**
 	 * Search for the fields_array row that matches the field
 	 *
@@ -331,9 +416,16 @@ class MODEL extends origin
 	 * Select a row from the table.  Requires that the prikey is set.
 	 *
 	 * Doesn't consider foreign keys (recursive)
+	 *
+	 * Can set values for a calling class.  Useful for when you have subordinate tables (i.e. foreign) for normalizing
+ 	 * data.  So you query the subordinate table and want not only it, but your fields set too.
+	 *
 	 * Throws exceptions
+	 *
+	 * @param object Calling object
+	 * @returns none
 	 * ***************************************************************************************************************/
-	/*none*/function select_row( $unused )
+	/*none*/function select_row(  $set_caller = false )
 	{
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Entering ");
 		if( isset( $this->table_details['primarykey'] ) )
@@ -357,6 +449,21 @@ class MODEL extends origin
 			if( isset( $row[$name] ) )
 			{
 				$this->set( $name, $row[$name] );
+				if( $set_caller AND isset( $this->caller ) )
+                                        try
+                                        {
+                                                $this->caller->set( $name, $this->$name );
+                                        } catch( Exception $e )
+                                        {
+                                                //Caller may not have the same name for the variable.
+                                                //Not going to stress over it.  They can query us for
+                                                //the value...
+                                                //HOWEVER if set_caller is true, they are expecting the value.
+						$this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', __METHOD__ . ":" . __LINE__ . " Tried setting caller" );
+						$this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', __METHOD__ . ":" . __LINE__ . " Exiting " );
+                                                throw $e;
+                                        }
+
 			}
 		}
 		$this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', __METHOD__ . ":" . __LINE__ . " Exiting " );
@@ -438,6 +545,12 @@ class MODEL extends origin
 		$this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', __METHOD__ . ":" . __LINE__ . " Exiting " );
 		return $res;
 	}
+	/**//*********************************************************
+	* Perform the db_query (FA)
+	*
+	* @param string the error message to put on screen upon failure.
+	* @returns query_result from db_query.
+	*************************************************************/
 	function query( $msg )
 	{
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Entering ");
@@ -449,7 +562,7 @@ class MODEL extends origin
 	/***************************************************************************************//**
 	 * Delete a row in the table as long as the prikey has a value set
 	 *
-	 * Will eventually throw exceptions!
+	 * throw exceptions!
 	 *
 	 * *****************************************************************************************/
 	function delete_table()
@@ -470,7 +583,7 @@ class MODEL extends origin
 	 *
 	 * Will eventually throw exceptions!
 	 *
-	 *@return integer primary key
+	 * @return integer primary key that we updated
 	 * *****************************************************************************************/
 	function update_table()
 	{
@@ -503,7 +616,10 @@ class MODEL extends origin
 		return $pri;
 	}
 	/*****************************************************************************//**
+	 * Check if the PrimaryKey has 1 or more rows for our ->pri value
 	 *
+	 * If table_details primarykey isn't set, we look for a field named id in fields_array
+	 * TODO: extend to look for id_XXX.  But if we have multiple id_ fields do we use the first one?
 	 *
 	 * @returns bool did we find the key
 	 * ******************************************************************************/
@@ -583,13 +699,25 @@ class MODEL extends origin
 		//var_dump( $sql );
 		$this->db_insert_id = -1;
 		if( $fieldcount > 0 )
+		{
 			db_query( $sql, "Couldn't insert into table " . $this->table_details['tablename'] . " for " .  $sql );	
+			$this->db_insert_id = db_insert_id();
+		}
 		else
+		{
 			display_error( "No values set so couldn't insert" );
-		$this->db_insert_id = db_insert_id();
+			//Should this throw an error?  Or is the -1 return sufficient?
+		}
 		$this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', __METHOD__ . ":" . __LINE__ . " Exiting " );
 		return $this->db_insert_id;
 	}
+	/**//*************************************************************************************
+	* Using table_details, we create (IF NOT EXIST) the table in MySQL.
+	*
+	*	We build the table definition SQL statement from the table_definition.
+	*	TODO: Extend to FORCE a create - Drop and re-create.
+	*
+	******************************************************************************************/
 	function create_table()
 	{
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Entering ");
@@ -670,16 +798,17 @@ class MODEL extends origin
 		$this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', __METHOD__ . ":" . __LINE__ . " Exiting " );
 		return $ret;
 	}
+	/**//***********************************************************************
+	* Alter a table.  Assumes create_table (or equiv) had been successfully run.
+	*
+	*	We designed this to ensure all columns are present, and all indexes created
+	*	This is also used for updates/upgrades.
+	*
+	* @return db_query_result
+	*****************************************************************************/
 	function alter_table()
 	{
 		$this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', __METHOD__ . ":" . __LINE__ . " Entering" );
-		//Need a function for doing updates/upgrades between versions.
-		//ASSUMPTION:
-		//	create_table as been run, and if not exist may
-		//	or may not have triggered.  Regardless we are
-		//	going to ALTER table to ensure all INDEXES are
-		//	created and all COLUMNS exist.
-		//
 		//	ALTER TABLE tablename
 		//		ADD COLUMN (colname colspec, colname2 colspec2)
 		$sql = "ALTER TABLE `" . $this->table_details['tablename'] . "`" . "\n";
@@ -736,7 +865,6 @@ class MODEL extends origin
 	/*@int@*/function count_rows()
 	{
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Entering ");
-		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Exiting ");
 		$res = db_query( "select count(*) from " . $this->table_details['tablename'], "Couldn't count rows in " . $this->table_details['tablename'] );
 		$count = db_fetch_row( $res );
 		$this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', __METHOD__ . ":" . __LINE__ . " Exiting " );
@@ -746,6 +874,7 @@ class MODEL extends origin
 	 * Count the number of rows in the table filtered by criteria
 	 *
 	 * @TODO refactor this and count_rows to use array of query fields...
+	 * Calls count_rows if where isn't passed in.
 	 *
 	 * @params string where criteria w/o leading "where"
 	 * @returns int number of rows
@@ -1164,6 +1293,10 @@ class MODEL extends origin
  		/**/
 		$this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', __METHOD__ . ":" . __LINE__ . " Exiting " );
 	}	
+	/**//*********************************************************
+	*
+	*
+	**************************************************************/
 	function buildSelectQuery( $b_validate_in_table = false )
 	{
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Entering ");
@@ -1318,6 +1451,8 @@ class MODEL extends origin
 	/**********************************************//**
 	 * Take a stdClass object and copy its fields to us
 	 *
+	 *	Should this be in ORIGIN?
+	 *
 	 * @since 20200712
 	 * @param stdClass
 	 * @return null
@@ -1333,6 +1468,10 @@ class MODEL extends origin
                 }
 		$this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', __METHOD__ . ":" . __LINE__ . " Exiting " );
         }
+	/**//***********************************************
+	* Copy our values into our caller.
+	*
+	*****************************************************/
 	function var2caller()
         {
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Entering ");
@@ -1420,6 +1559,9 @@ class MODEL extends origin
 	 *  OR in a more generic manner what if we have multiple external programs such as WOO, SuiteCRM?
 	 *  We could enhance the data dictionary module to do name conversions...
 	 *  Alternatively, we inherit the MODEL class and do the conversion in inheriting class....
+	 *
+	 * @param string the field we are looking for
+	 * @returns string either the passed in field name, or its external name if set.
 	 * ********************************************/
 	function get_properties_external_field_name( $field )
 	{
@@ -1438,6 +1580,14 @@ class MODEL extends origin
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Exiting ");
 		return $field;
 	}
+	/**//***********************************************************
+	* Builds 2 arrays - foreign_objects_array and properties_array
+	*
+	* Sorts fields_array into properties_array and foreign_objects_array
+	* 
+	* @param none
+	* @returns none
+	****************************************************************/
 	function build_properties_array()
 	{
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Entering ");
@@ -1453,12 +1603,31 @@ class MODEL extends origin
 		}
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Exiting ");
 	}
+	/**//********************************************************************
+	* Calls build_properties_array to build our list of foreign properties.
+	*
+	* Is there a downside to having the 2 functions?  Especially with this
+	* being an alias?
+	*
+	* @param none
+	* @returns none
+	***************************************************************************
 	function build_foreign_objects_array()
 	{
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Entering ");
+		$this->build_properties_array();
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Exiting ");
 		//return;
 	}
+	/**//*********************************************************************
+	* Take an array and set our values
+	*
+	* 	20240114 replaced a straight assignment with ->set
+	*	this way if we write any filters on the class they are applied
+	*
+	* @param array
+	* @returns int the count of params (currently passed in vice set)
+	***************************************************************************
 	function array2var( $data_array )
 	{
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Entering ");
@@ -1467,13 +1636,21 @@ class MODEL extends origin
 		{
 			if( isset( $data_array[$property] ) )
 			{
-				$this->$property = $data_array[$property];
+					//Should we enforce only setting variables we've defined?
+				$this->set( $property, $data_array[$property] );
+				//$this->$property = $data_array[$property];
 				$extract_count++;
 			}
 		}
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Exiting ");
 		return $extract_count;
 	}
+	/**//***********************************************************
+	* Alias for array2var.  Set our fields from a passed in array
+	*
+	* @param array
+	* @reutrns count of fields set
+	****************************************************************/
 	/*@int@*/function extract_data_array( $assoc_array )
 	{
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Entering ");
@@ -1481,7 +1658,6 @@ class MODEL extends origin
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Exiting ");
 		return $ret;
 	}
-
 	/*********************************************
 	 * Build the array of data that WC will accept
 	 *
@@ -1509,14 +1685,14 @@ class MODEL extends origin
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Exiting ");
 	}
 	/*******************************************************************//**
-	 *
 	 * 	reset_values.  unset all variables listed in properties_array
 	 *
 	 * 	As we cycle through a database result set putting values into
 	 * 	the object, we want to ensure we don't have any values left over
 	 * 	from the previous row.  This unsets all values so that they
 	 * 	are cleared.
-	 * 
+	 * @param none
+	 * @return none
 	 * **********************************************************************/
 	function reset_values()
 	{
@@ -1529,7 +1705,6 @@ class MODEL extends origin
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Exiting ");
 	}
 	/***************************************************************
-	 *
 	 * Extract Data Objects
 	 *
 	 * Recursively extracts the data object
@@ -1559,6 +1734,12 @@ class MODEL extends origin
 	}
 
 
+	/***************************************************************
+	 * Extract Data Objects
+	 *
+	 * Recursively extracts the data object
+	 * Builds a double linked list in the process.
+	***************************************************************/
 	/*int count of properties extracted*/
 	/*@int@*/function extract_data_obj( $srvobj )
 	{
@@ -1620,6 +1801,9 @@ class MODEL extends origin
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Exiting ");
 		return $extract_count;
 	}
+	/**//*********************************************
+	*
+	**************************************************/
 	function build_json_data()
 	{
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Entering ");
@@ -1627,6 +1811,9 @@ class MODEL extends origin
 		$this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', __METHOD__ . "::" . __LINE__ . " JSON data::" . print_r( $this->json_data, true ) );
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Exiting ");
 	}
+	/**//*********************************************
+	*
+	**************************************************/
 	/*@bool@*/function prep_json_for_send( $func = NULL )
 	{
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Entering ");
@@ -1643,6 +1830,9 @@ class MODEL extends origin
 			return TRUE;
 		}
 	}
+	/**//*********************************************
+	*
+	**************************************************/
 	function ll_walk_insert_fa()
 	{
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Entering ");
@@ -1658,6 +1848,9 @@ class MODEL extends origin
 		}
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Exiting ");
 	}
+	/**//*********************************************
+	*
+	**************************************************/
 	function ll_walk_update_fa()
 	{
 		$this->tell_eventloop( $this, "NOTIFY_LOG_DEBUG",  __METHOD__ . ":" . __LINE__ . " Entering ");
