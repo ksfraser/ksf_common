@@ -26,6 +26,8 @@ require_once( 'defines.inc.php' );
         /*@array@* /function fields2data( $fieldlist )
         /*@NULL@* /function LogError( $message, $level = PEAR_LOG_ERR )
         /*@NULL@* /function LogMsg( $message, $level = PEAR_LOG_INFO )
+	/*@NULL@* /function Log( $message, $level = PEAR_LOG_EMERG )
+        /*@NULL@* /function var_dump( $var, $level = PEAR_LOG_DEBUG )
         public function __call($method, $arguments)
         function __get( $prop ) {
         function __isset( $prop ) {
@@ -36,10 +38,6 @@ require_once( 'defines.inc.php' );
         /*@NULL@*/function set_var( $var, $value )
         function get( $field )
         function get_var( $var )
-        /*@array@*/function var2data()
-        /*@array@*/function fields2data( $fieldlist )
-        /*@NULL@*/function LogError( $message, $level = PEAR_LOG_ERR )
-        /*@NULL@*/function LogMsg( $message, $level = PEAR_LOG_INFO )
 
  *
  *
@@ -228,10 +226,88 @@ class origin
 				throw new Exception( "Variable to set ::" . $field . ":: is not a member of the class \n" . print_r( $this->object_fields, true ), KSF_FIELD_NOT_CLASS_VAR );
 		}
 		if( isset( $value ) )
-			$this->$field = $value;
+                {
+                        if( is_array( $this->$field ) )
+                        {
+                                echo "**********Setting an array \r\n";
+                                $this->$field[] = $value;
+                        }
+                        else
+                        {
+                                echo "**********Setting field $field \r\n";
+                                $this->$field = $value;
+                        }
+                }
 		else
 			throw new Exception( "Value to be set not passed in", KSF_VALUE_NOT_SET );
 	}
+        /*********************************************//**
+         * Set an array variable.  Throws exceptions on sanity checks
+         *
+         * The throwing of exceptions is probably going to break a bunch of code!
+         * @param field string Variable to be set
+         * @param value ... value for variable to be set
+         * @param int index array index to set
+         * @param native... bool enforce only the variables of the class itself.  default TRUE, which will break code.
+         * @param bool autoinc_index automatically increment the index if the array value is already set
+         * @param bool replace replace the value in the array if the index is already set.  Only one of autoinc and replace should be TRUE
+         *
+         * **********************************************/
+        function set_array( $field, $value = null, $index = 0, $enforce_only_native_vars = true, $autoinc_index = false, $replace = false )
+        {
+                if( !isset( $field )  )
+                        throw new Exception( "Fields not set", KSF_FIELD_NOT_SET );
+                try{
+                        $this->user_access( KSF_DATA_ACCESS_WRITE );
+                }
+                catch (Exception $e )
+                {
+                        throw new Exception( $e->getMessage, $e->getCode );
+                }
+                if( $enforce_only_native_vars )
+                {
+                        if( ! isset( $this->object_fields ) )
+                        {
+                                //debug_print_backtrace();
+                                throw new Exception( "object_fields not set so can't check to enforce only_native_vars", KSF_FIELD_NOT_SET );
+                        }
+                        else if( ! in_array( $field, $this->object_fields ) AND ! array_key_exists( $field, $this->object_fields ) )
+                                throw new Exception( "Variable to set ::" . $field . ":: is not a member of the class \n" . print_r( $this->object_fields, true ), KSF_FIELD_NOT_CLASS_VAR );
+                }
+                if( isset( $value ) )
+                {
+                        if( ! is_array( $this->field ) )
+                        {
+                                //Wrong func called.  We can either throw an exception, or call ->set instead.
+                                $this->set( $field, $value, $enforce_only_native_vars );
+                        }
+                        else
+                        {
+                                if( isset( $this->$field[$index] ) )
+                                {
+                                        if( $autoinc_index )
+                                        {
+                                                $index++;
+                                                $this->set_array( $field, $value, $index, $enforce_only_native_vars, $autoinc_index );
+                                        }
+                                        else if( $replace )
+                                        {
+                                                $this->$field[$index] = $value;
+                                        }
+                                        else
+                                        {
+                                                throw new Exception( "Field ::" . $field . ":: is already set but we weren't told to replace!", KSF_VALUE_SET_NO_REPLACE );
+                                        }
+                                }
+                                else
+                                {
+                                        $this->$field[$index] = $value;
+                                }
+                        }
+                }
+                else
+                        throw new Exception( "Value to be set not passed in", KSF_VALUE_NOT_SET );
+        }
 	/**//*******************************************
 	 * Nullify a field
 	 *
@@ -300,12 +376,46 @@ class origin
 			$this->errors[] = $message;
 		return;
 	}
+        /*@NULL@*/function Log( $message, $level = PEAR_LOG_EMERG )
+        {
+                //These probably should have been put in the reverse order, but for now...
+                switch( $level )
+                {
+                        case PEAR_LOG_EMERG:
+                        case PEAR_LOG_ALERT:
+                        case PEAR_LOG_CRIT:
+                        case PEAR_LOG_ERR:
+                                $this->LogError( $message, $level );
+                        case PEAR_LOG_WARNING:
+                        case PEAR_LOG_NOTICE:
+                        case PEAR_LOG_INFO:
+                        case PEAR_LOG_DEBUG:
+                                $this->var_dump( $message, 0 );
+                        default:
+                                $this->LogMsg( $message, $level );
+                                break;
+                }
+        }
 	/*@NULL@*/function LogMsg( $message, $level = PEAR_LOG_INFO )
 	{
 		if( $level <= $this->loglevel )
 			$this->log[] = $message;
 		return;
 	}
+        /*@NULL@*/function var_dump( $var, $level = PEAR_LOG_DEBUG )
+        {
+                if( $level <= $this->loglevel )
+                        if( is_array( $var ) )
+                        {
+                                var_dump( get_class( $this ) );
+                                var_dump(  $var );
+                        }
+                        else
+                        {
+                                var_dump( get_class( $this ) . "::" . $var );
+                        }
+                return;
+        }
 	/***************************************************************//**
 	* Create a Name-Value pair as part of an array.  Can replace KEYS
 	*
