@@ -47,6 +47,10 @@ define( 'GL_ACCOUNT_NAME_LENGTH', 32 );
 //prod_variables
 define( 'SLUG_LENGTH', 5 );
 
+define( 'MAX_UPC_LEN', 14 );
+define( 'MIN_UPC_LEN', 4 );
+
+
 define( 'REFERENCE_LENGTH', 40 );
 define( 'LOC_CODE_LENGTH', 5 );
 //table stock_category
@@ -124,16 +128,34 @@ $stock_id_tables[] = array( 'table' => TB_PREF . 'purch_data', 'column' => 'supp
  *
  *
  * ****************************************************************************/
-define( 'KSF_FIELD_NOT_SET', 5731 );
-define( 'KSF_VALUE_NOT_SET', 5732 );
-define( 'KSF_FIELD_NOT_CLASS_VAR', 5733 );
-define( 'KSF_PRIKEY_NOT_SET', 5734 );
-define( 'KSF_PRIKEY_NOT_DEFINED', 5735 );
-define( 'KSF_TABLE_NOT_DEFINED', 5736 );
-define( 'KSF_NO_MATCH_FOUND', 5737 );
-define( 'KSF_INVALID_DATA_TYPE', 5738 );
-define( 'KSF_INVALID_DATA_VALUE', 5739 );
-define( 'KSF_UNKNOWN_DATA_TYPE', 5740 );
+$eventcount = 573000;
+define( 'KSF_DUMMY_EVENT', $eventcount ); $eventcount++;      //Used by woo_interface:build_interestedin as example
+define( 'KSF_FIELD_NOT_SET', $eventcount ); $eventcount++;      //Class Fields
+define( 'KSF_VALUE_NOT_SET', $eventcount ); $eventcount++;      //var set to NULL
+define( 'KSF_VALUE_SET_NO_REPLACE', $eventcount ); $eventcount++;
+define( 'KSF_VALUE_SET', $eventcount ); $eventcount++;
+define( 'KSF_VALUE_REPLACED', $eventcount ); $eventcount++;
+define( 'KSF_VAR_NOT_SET', $eventcount ); $eventcount++;        //Function VARs
+define( 'KSF_RESULT_NOT_SET', $eventcount ); $eventcount++;     //For when we are expecting a result from a call and it came back NULL unexpectedly
+define( 'KSF_FIELD_NOT_CLASS_VAR', $eventcount ); $eventcount++;
+define( 'KSF_PRIKEY_NOT_SET', $eventcount ); $eventcount++;
+define( 'KSF_PRIKEY_NOT_DEFINED', $eventcount ); $eventcount++;
+define( 'KSF_TABLE_NOT_DEFINED', $eventcount ); $eventcount++;
+define( 'KSF_NO_MATCH_FOUND', $eventcount ); $eventcount++;
+define( 'KSF_INVALID_DATA_TYPE', $eventcount ); $eventcount++;
+define( 'KSF_INVALID_DATA_VALUE', $eventcount ); $eventcount++;
+define( 'KSF_UNKNOWN_DATA_TYPE', $eventcount ); $eventcount++;
+define( 'KSF_FCN_NOT_OVERRIDDEN', $eventcount ); $eventcount++;
+define( 'KSF_FCN_PATH_OVERRIDE', $eventcount ); $eventcount++;
+define( 'KSF_FCN_NOT_EXIST', $eventcount ); $eventcount++;
+define( 'KSF_LOST_CONNECTION', $eventcount ); $eventcount++;
+define( 'KSF_CONFIG_NOT_EXIST', $eventcount ); $eventcount++;
+define( 'KSF_SEARCHED_VALUE_NOT_FOUND', $eventcount ); $eventcount++;
+define( 'KSF_FCN_REFACTORED', $eventcount ); $eventcount++;
+define( 'KSF_FILE_OPEN_FAILED', $eventcount ); $eventcount++;
+define( 'KSF_FILE_READONLY', $eventcount ); $eventcount++;
+define( 'KSF_FILE_PTR_NOT_SET', $eventcount ); $eventcount++;      //var set to NULL
+define( 'KSF_CLASS_RENAMED_DEPREC', $eventcount ); $eventcount++;
 /************************************************************************//**
  * Data Access levels
  *  Think filesystem RWX values R = 0/1, W = 0/2 and X = 0/4
@@ -147,6 +169,26 @@ define( 'KSF_MODULE_ACCESS_DENIED', 573620 );
 define( 'KSF_MODULE_ACCESS_READ', 573621 );
 define( 'KSF_MODULE_ACCESS_WRITE', 573622 );
 define( 'KSF_MODULE_ACCESS_READWRITE', 573623 );
+define( 'KSF_MAX_MODULES', 10 );        //Fixing modarray and tabarray sizes in eventloop.  Of course we could always detect that this is defined, undefine, and redefine if we need more
+define( 'KSF_MAX_LOADPRIORITY', KSF_MAX_MODULES * 2 );  //Fixing modarray and tabarray sizes in eventloop.  Of course we could always detect that this is defined, undefine, and redefine if we need more
+define( 'KSF_DUMMY_EVENT', $eventcount ); $eventcount++;
+
+/****************************************************************************//**
+* Frontaccounting Specific
+********************************************************************************/
+define( 'FA_NEW_STOCK_ID', $eventcount ); $eventcount++;
+define( 'FA_PRODUCT_UPDATED', $eventcount ); $eventcount++;
+define( 'FA_PRODUCT_LINKED', $eventcount ); $eventcount++;
+define( 'FA_PRICE_UPDATED', $eventcount ); $eventcount++;
+define( 'KSF_WOO_RESET_ENDPOINT', $eventcount ); $eventcount++;
+define( 'KSF_WOO_INSTALL', $eventcount ); $eventcount++;
+define( 'KSF_SALE_ADDED', $eventcount ); $eventcount++;
+define( 'KSF_SALE_REMOVED', $eventcount ); $eventcount++;
+define( 'KSF_SALE_EXPIRED', $eventcount ); $eventcount++;
+define( 'KSF_WOO_GET_PRODUCT', $eventcount ); $eventcount++;
+define( 'KSF_WOO_GET_PRODUCTS_ALL', $eventcount ); $eventcount++;
+
+
 global $path_to_ksfcommon;
 $path_to_ksfcommon = __DIR__;
 

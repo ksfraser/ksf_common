@@ -48,7 +48,7 @@ class origin
 	//static $eventloop;		//!< object	//https://www.php.net/manual/en/language.variables.scope.php
 	protected $eventloop;		//!< object
 	protected $client;		//!< object what object instantiated this object
-	protected $interestedin;	//!< array
+	protected $interestedin;	//!< array  Events that we want to observe/react to.  Depends on eventloop.
 	protected $obj_var_name_arr;	//Array of field names in this object that need to be translated in the NVL array
 	protected $dest_var_name_arr;	//Array of field names in the DEST Object for translating.
 	protected $name_value_list;
@@ -104,7 +104,7 @@ class origin
 		$this->dest_var_name_arr = array();
 		$this->name_value_list = array();
 		$this->build_interestedin();
-		//$this->register_with_eventloop();
+		$this->register_with_eventloop();
 	}
 	/**//***************************************************************************
 	* Take an array of initialization paramaters and handle
