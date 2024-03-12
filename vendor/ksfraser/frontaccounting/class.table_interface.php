@@ -132,7 +132,7 @@ class table_interface
 			}
 			
 		}
-		throw new Exception( "Variable <i><b>" . $field . "</b></i> to be set is not a member of the class", KSF_FIELD_NOT_CLASS_VAR );
+		throw new Exception( "Variable <i><b>" . $field . "</b></i> to be set is not a member of the class:specified in fields_array", KSF_FIELD_NOT_CLASS_VAR );
 	}
 	/*******************************************************************************************//**
 	 * Sanity check on passed in data versus table definition (data dictionary)
@@ -197,6 +197,11 @@ class table_interface
 	 *
 	 * Doesn't consider foreign keys (recursive)
 	 * Throws exceptions
+	 *
+	 * Updated 20240221
+	 *
+	 * @param bool Should we set the calling classes variables that match
+	 * @returns none
 	 * ***************************************************************************************************************/
 	/*none*/function select_row( $set_caller = false )
 	{
@@ -209,12 +214,14 @@ class table_interface
 		$sql = "SELECT * from `" . $this->table_details['tablename'] . "` WHERE $key='" . $this->$key . "'";
 		$res = db_query( $sql, "Couldn't select from " . $this->table_details['tablename'] );
 		$row = db_fetch( $res );
+		$field_count = 0;
 		foreach( $this->fields_array as $def )
 		{
 			$name = $def['name'];
 			if( isset( $row[$name] ) )
 			{
 				$this->$name = $row[$name];
+				$field_count++;
 				if( $set_caller AND isset( $this->caller ) )
 					try
 					{
@@ -228,6 +235,11 @@ class table_interface
 						throw $e;
 					}
 			}
+		}
+		if( 0 === $field_count )
+		{
+			//We didn't set any fields.  Either there were none returned, or our table definition vs SQL Table don't match
+			throw new Exception( "Query didn't set any of our fields.  Is our class definition faulty?" );
 		}
 	}
 	

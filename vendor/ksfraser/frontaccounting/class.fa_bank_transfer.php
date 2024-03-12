@@ -10,7 +10,7 @@ include_once($path_to_root . "/includes/data_checks.inc");
 include_once($path_to_root . "/gl/includes/gl_db.inc");
 include_once($path_to_root . "/gl/includes/gl_ui.inc");
 
-require_once( '../ksf_modules_common/class.origin.php' );	//This needs to be replaced with composer namespace ksfraser/origin/...
+require_once( '../ksf_modules_common/class.fa_origin.php' );	//This needs to be replaced with composer namespace ksfraser/origin/...
 
 /*
 *	$js = "";
@@ -30,54 +30,138 @@ require_once( '../ksf_modules_common/class.origin.php' );	//This needs to be rep
 *	check_db_has_bank_accounts(_("There are no bank accounts defined in the system."));
 */
 
-class fa_bank_transfer extends origin
+/**//**************************************************************************
+* Class for creating Bank Transfer records
+*
+* Intra-bank transfers can take a few days due to clearing.  
+* So if we are trying to match a transfer between 2 different banks
+*	(e.g. Bank to CC) then we need to add/subtract date ranges
+*
+*******************************************************************************/
+class fa_bank_transfer extends fa_origin
 {
-	protected $trans_no;
-	protected $transfer_type;
-	protected $ref;
-	protected $memo_;
+	//protected $trans_no;
+	//protected $transfer_type;	//Inherited as trans_type
+	//protected $ref;		//Inherited as reference
+	//protected $memo_;		//Inherited
 	protected $FromBankAccount;
 	protected $ToBankAccount;
 	protected $charge;
 	protected $amount;
 	protected $target_amount;
-	protected $DatePaid;
+	//protected $trans_date;	//Inherited
 
 	function __construct()
 	{
-		$this->set( "memo_", '' );
-		$this->set( "FromBankAccount", 0 );
-		$this->set( "ToBankAccount", 0 );
-		$this->set( "amount", 0 );
-	}
+		//	display_notification( __FILE__ . ":" . __LINE__  );
 
+		parent::__construct();
+		//	display_notification( __FILE__ . ":" . __LINE__  );
+		$this->set( "memo_", '' );
+		//	display_notification( __FILE__ . ":" . __LINE__  );
+		$this->set( "FromBankAccount", 0 );
+		//	display_notification( __FILE__ . ":" . __LINE__  );
+		$this->set( "ToBankAccount", 0 );
+		//	display_notification( __FILE__ . ":" . __LINE__  );
+		$this->set( "amount", 0 );
+		//	display_notification( __FILE__ . ":" . __LINE__  );
+		$this->set( "target_amount", 0 );
+		//	display_notification( __FILE__ . ":" . __LINE__  );
+		$this->set( "charge", 0 );
+		$this->set( "trans_type", ST_BANKTRANSFER );
+		//	display_notification( __FILE__ . ":" . __LINE__  );
+	}
 	function set( $field, $value = NULL, $enforce_only_native_vars = true )
 	{
+		//	display_notification( __FILE__ . ":" . __LINE__  );
 		switch( $field )
 		{
 			case "charge":
 			case "amount":
 			case "target_amount":
-				$value = price_format( $value );
+				$oldvalue = $value;
+			//	$value = price_format( $value );
+				//	display_notification( __FILE__ . ":" . __LINE__ . " Value $oldvalue converted to $value " );
 			break;
-			case "DatePaid":
-				$value = sql2date( $value );
-				if ( !is_date_in_fiscalyear( $value ) )
-				{
-                        		$value = end_fiscalyear();
-				}
+			case "trans_date":
 			break;
 		}
-		parent::set( $field, $value, $enforce_only_native_vars );
+		//	display_notification( __FILE__ . ":" . __LINE__  );
+		try {
+			parent::set( $field, $value, $enforce_only_native_vars );
+		} catch (Exception $e )
+		{
+/**
+			if( KSF_FIELD_NOT_CLASS_VAR == $e->getCode() )
+			{
+				display_notification( __FILE__ . ":" . __LINE__ . ":" . "Error: " . $e->getMessage() );
+				display_notification( __FILE__ . ":" . __LINE__ . ":" . print_r( $this, true )  );
+				//Try again.
+				$this->object_var_names();
+				return parent::set( $field, $value, $enforce_only_native_vars );
+			}
+**/
+			display_notification( __FILE__ . ":" . __LINE__ . ":" . "Error: " . $e->getMessage() );
+		}
+		//	display_notification( __FILE__ . ":" . __LINE__  );
 	}
+	/**//*************************************************************
+	* Ensure the minimum fields are set.
+	*
+	* @param none
+	* @returns bool
+	******************************************************************/
+	function can_process()
+	{
+		if( ! isset( $this->FromBankAccount ) )
+		{
+			throw new Exception( "Bank Transfer requires a FROM bank account" );
+		}
+		if( ! isset( $this->ToBankAccount ) )
+		{
+			throw new Exception( "Bank Transfer requires a TO bank account" );
+		}
+		if( ! isset( $this->trans_date ) )
+		{
+			throw new Exception( "Bank Transfer requires a Date Paid" );
+		}
+		if( ! isset( $this->amount ) )
+		{
+			throw new Exception( "Bank Transfer requires an amount" );
+		}
+		//ref, memo, charge and target_amount are probably optional
+		return true;
+	}
+	/**//**************************************************************
+	* Add a Bank Transfer
+	*
+	* How does this differ from 
+	*	add_bank_trans($trans_type_to_use, $payment_no, $bank_account, $ref,
+        *			$date_, $bank_amount - $charge, PT_CUSTOMER, $customer_id);
+	* Is that a Bank Payment?
+	*
+	* gl/includes/db/gl_db_banking.inc
+	* function add_bank_transfer($from_account, $to_account, $date_, $amount, $ref, $memo_, $charge=0, $target_amount=0)
+	*
+	* @param none
+	* @returns int the Bank Transfer transaction number
+	******************************************************************/
 	function add_bank_transfer()
 	{
+		if( ! $this->can_process() )
+		{
+			//Should have been some exceptions by now
+			throw new Exception( "Can't process Bank Transfer" );
+		}
+		//Target amount can be 0.  If so, then AMOUNT is used.
+		//If Target amount is set, and the diff between it + charge is different than amount
+		//	then a FX charge is included to balance.
 		$trans_no = add_bank_transfer(	
 						$this->FromBankAccount,
 						$this->ToBankAccount, 
-						$this->DatePaid,
+						$this->trans_date,
 						$this->amount, 
-						$this->ref, 
+						$this->reference, 
 						$this->memo_, 
 						$this->charge, 
 						$this->target_amount
@@ -85,14 +169,25 @@ class fa_bank_transfer extends origin
 		$this->set( "trans_no", $trans_no );
 		return $trans_no;
 	}
+	/**//**************************************************************
+	* Update a Bank Transfer
+	*
+	* @param none
+	* @returns int the Bank Transfer transaction number
+	******************************************************************/
 	function update_bank_transfer()
 	{
+		if( ! $this->can_process() )
+		{
+			//Should have been some exceptions by now
+			throw new Exception( "Can't process Bank Transfer" );
+		}
 		$trans_no = update_bank_transfer(	$this->trans_no, 
 						$this->FromBankAccount,
 						$this->ToBankAccount, 
-						$this->DatePaid,
+						$this->trans_date,
 						$this->amount, 
-						$this->ref, 
+						$this->reference, 
 						$this->memo_, 
 						$this->charge, 
 						$this->target_amount
@@ -133,7 +228,7 @@ class fa_bank_accounts_MODEL
 	*******************************************************************/
 	function  cash_accounts_list_sql()
 	{
-		return "SELECT id, bank_account_name, bank_curr_code, inactive FROM ".TB_PREF."bank_accounts WHERE account_type=".BT_CASH;
+		return "SELECT id, bank_account_name, bank_curr_code, inactive FROM ".TB_PREF."bank_accounts WHERE account_ype=".BT_CASH;
 	}
 }
 

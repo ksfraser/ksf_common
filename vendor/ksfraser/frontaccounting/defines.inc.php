@@ -79,15 +79,20 @@ define( 'FA_PRODUCT_QOH_UPDATE', $eventcount ); $eventcount++;
 define( 'FA_PRODUCT_CATEGORY_UPDATE', $eventcount ); $eventcount++;
 define( 'FA_CUSTOMER_CREATED', $eventcount ); $eventcount++;
 
-
-function currentdate()
+if( ! defined( "currentdate" ) )
 {
-	return date( 'Y-m-d' );
+	function currentdate()
+	{
+		return date( 'Y-m-d' );
+	}
 }
 
-function currenttime()
+if( ! defined( "currenttime" ) )
 {
-	return date( 'Y-m-d H:i:s' );
+	function currenttime()
+	{
+		return date( 'Y-m-d H:i:s' );
+	}
 }
 
 define( 'SUCCESS', TRUE );
@@ -171,7 +176,6 @@ define( 'KSF_MODULE_ACCESS_WRITE', 573622 );
 define( 'KSF_MODULE_ACCESS_READWRITE', 573623 );
 define( 'KSF_MAX_MODULES', 10 );        //Fixing modarray and tabarray sizes in eventloop.  Of course we could always detect that this is defined, undefine, and redefine if we need more
 define( 'KSF_MAX_LOADPRIORITY', KSF_MAX_MODULES * 2 );  //Fixing modarray and tabarray sizes in eventloop.  Of course we could always detect that this is defined, undefine, and redefine if we need more
-define( 'KSF_DUMMY_EVENT', $eventcount ); $eventcount++;
 
 /****************************************************************************//**
 * Frontaccounting Specific
@@ -192,9 +196,12 @@ define( 'KSF_WOO_GET_PRODUCTS_ALL', $eventcount ); $eventcount++;
 global $path_to_ksfcommon;
 $path_to_ksfcommon = __DIR__;
 
-function exceptionErrorHandler($errNumber, $errStr, $errFile, $errLine ) {
-        throw new ErrorException($errStr, 0, $errNumber, $errFile, $errLine);
-    }
+if( ! defined( "exceptionErrorHandler" ) )
+{
+	function exceptionErrorHandler($errNumber, $errStr, $errFile, $errLine ) {
+	        throw new ErrorException($errStr, 0, $errNumber, $errFile, $errLine);
+	}
+}
 //set_error_handler('exceptionErrorHandler');
 
 interface IException

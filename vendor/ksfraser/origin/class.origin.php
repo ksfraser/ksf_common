@@ -437,6 +437,91 @@ class origin
 		$this->name_value_list = $val;
                 return $val;
 	}
+	/**//************************************************************
+	* Find the token matches between arrays.  GOTCHA - Exact Match
+	*
+	*
+	* @param array
+	* @param array
+	* @returns int
+	*****************************************************************/
+	function match_tokens( $arr1, $arr2 )
+	{
+	        $result = array_intersect( $arr1, $arr2 );
+	        return count( $result );
+	}
+        /**//**********************************************************************
+        * Convert Statement class to this object
+        *
+	* @since 20240303
+	*
+        * @param class
+        * @returns int how many fields did we copy
+        **************************************************************************/
+        function obj2obj( $obj )
+        {
+                //display_notification( __FILE__ . "::" . __LINE__ . print_r( $obj, true ) );
+                if( is_array( $obj ) )
+                        return $this->arr2obj( $obj );
+                if( ! is_object( $obj ) )
+                        throw new Exception( "Passed in data is neither an array nor an object.  We can't handle here!" );
+
+                $cnt = 0;
+                foreach( get_object_vars($this) as $key => $value )
+                {
+                        //display_notification( __FILE__ . "::" . __LINE__ . " " . print_r( $key, true ) );
+                        if( isset( $obj->$key ) )
+                        {
+                                //display_notification( __FILE__ . "::" . __LINE__ . " $key $obj->$key" );
+                                //$this->$key = $obj->$key;
+                                $this->set( $key, $obj->$key );
+                                //      display_notification( __FILE__ . "::" . __LINE__ . " " . print_r( $this->$key, true ) );
+                                $cnt++;
+                        }
+                        else
+                        {
+                                //display_notification( __FILE__ . "::" . __LINE__ . " $key not set in " . print_r( $obj, true ) );
+                        }
+                }
+                //      display_notification( __FILE__ . "::" . __LINE__ . print_r( $this, true ) );
+                return $cnt;
+        }
+        /**//**********************************************************************
+        * Convert Transaction array to this object
+	*
+	* @since 20240303
+        *
+        * @param array
+        * @returns int how many fields did we copy
+        **************************************************************************/
+        function arr2obj( $arr )
+        {
+                //display_notification( __FILE__ . "::" . __LINE__ . print_r( $arr, true ) );
+                if( is_object( $arr ) )
+                        return $this->obj2obj( $arr );
+                if( ! is_array( $arr ) )
+                        throw new Exception( "Passed in data is neither an array nor an object.  We can't handle here!" );
+
+                $cnt = 0;
+                foreach( get_object_vars($this) as $key => $value )
+                {
+                        //display_notification( __FILE__ . "::" . __LINE__ . " " . print_r( $key, true ) );
+                        if( isset( $arr[$key] ) )
+                        {
+                                //display_notification( __FILE__ . "::" . __LINE__ . " $key $arr[$key]" );
+                                //$this->$key = $arr[$key];
+                                $this->set( $key, $arr[$key] );
+                                //      display_notification( __FILE__ . "::" . __LINE__ . " " . print_r( $this->$key, true ) );
+                                $cnt++;
+                        }
+                        else
+                        {
+                                //display_notification( __FILE__ . "::" . __LINE__ . " $key not set in " . print_r( $arr, true ) );
+                        }
+                }
+                //      display_notification( __FILE__ . "::" . __LINE__ . print_r( $this, true ) );
+                return $cnt;
+        }
 }
 
 /***************DYNAMIC create setter and getter**********************

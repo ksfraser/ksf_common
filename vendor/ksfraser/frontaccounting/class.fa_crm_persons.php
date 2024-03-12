@@ -48,6 +48,8 @@ class fa_crm_persons extends table_interface
 	protected $lang;
 	protected $notes;	//<@ Also in debtors_master, cust_branch
 	protected $inactive;	//<@ Also in debtors_master
+	protected $cat_ids;
+	protected $entity;
 
 	function __construct( $caller = null )
 	{
@@ -71,7 +73,19 @@ class fa_crm_persons extends table_interface
 
 		$this->table_details['primarykey'] = "id";
 	}
-
-
+	/**//***************************************************************
+	* Add a person to the CRM
+	*
+	* @param none
+	* @returns int ID
+	********************************************************************/
+        function add_crm_person()
+        {
+                require_once( '../../includes/db/crm_contacts_db.inc' );
+                //function add_crm_person($ref, $name, $name2, $address, $phone, $phone2, $fax, $email, $lang, $notes, $cat_ids=null, $entity=null)
+                add_crm_person( $this->ref, $this->name, $this->name2, $this->address, $this->phone, $this->phone2, $this->fax, $this->email, $this->lang, $this->notes, $this->cat_ids, $this->entity);
+ 		$this->id = db_insert_id();
+                return $this->id;
+        }
 }
 

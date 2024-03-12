@@ -39,5 +39,18 @@ class fa_crm_contacts extends table_interface
 		$this->fields_array[] = array( 'name' => 'action', 'label' => '', 'type' => $descl, 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );
 		$this->fields_array[] = array( 'name' => 'entity_id', 'label' => '', 'type' => $descl, 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );
 	}
+	/**//*******************************************
+	* Add a CRM Contact
+	*
+	* @param none
+	* @return int the ID of the inserted record
+	***********************************************/
+	function add_crm_contact()
+	{
+		//function add_crm_contact($type, $action, $entity_id, $person_id)
+		add_crm_contact( $this->type, $this->action, $this->entity_id, $this->$person_id );
+		$this->id = db_insert_id();
+		return $this->id;
+	}
 }
 
