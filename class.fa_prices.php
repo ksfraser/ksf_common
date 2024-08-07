@@ -16,6 +16,9 @@ include_once($path_to_root . "/workcenters/includes/workcenters_db.inc");
 /********************************************************//**
  * Various modules need to be able to add or get info about workcenters from FA
  *
+ *	Mantis 2918 Select prices updated since a given date
+ *
+ *
  *	This class uses FA specific routines (display_notification etc)
  *
  * **********************************************************/
@@ -28,12 +31,14 @@ class fa_prices extends table_interface
 | sales_type_id | int(11)     | NO   |     | 0       |                |
 | curr_abrev    | char(3)     | NO   |     |         |                |
 | price         | double      | NO   |     | 0       |               
+| last_updated  | timestamp   | NO   |     | current_timestamp | ON UPDATE CURRENT_TIMESTAMP()
 	*/
 	protected $id;	
 	protected $stock_id;
 	protected $sales_type_id;
 	protected $curr_abrev;
 	protected $price;
+	protected $last_updated;
 	var $min_cid;
 	var $max_cid;
 	var $errors = array();
@@ -51,8 +56,10 @@ class fa_prices extends table_interface
 		$this->fields_array[] = array( 'name' => 'sales_type_id', 'label' => '', 'type' => 'int(11)', 'null' => 'NULL', 'readwrite' => 'readwrite', 'default' => '0' );
 		$this->fields_array[] = array('name' => 'curr_abrev', 'label' => 'Bank Account', 'type' => $descl, 'null' => 'NOT NULL',  'readwrite' => 'readwrite', 'default' => '0' );
 		$this->fields_array[] = array( 'name' => 'price', 'label' => '', 'type' => 'double', 'null' => 'NULL', 'readwrite' => 'readwrite', 'default' => '0' );
+		$this->fields_array[] = array( 'name' => 'last_updated', 'label' => 'Last Updated', 'type' => 'timestamp', 'null' => 'NULL', 'readwrite' => 'readwrite', 'default' => 'current_timestamp' );
 		
 		$this->table_details['primarykey'] = "id";
+		$this->from_array = array( TB_PREF . 'prices' );
 	}
 	function insert()
 	{
@@ -76,7 +83,7 @@ class fa_prices extends table_interface
 	 * @param string partial stock_id to match against
 	 * @param string ISO Currency code (from internal table)
 	 * ************************************************/
-	function add_price_multi_stock_master( /*numeric*/$sales_type, /*double*/ $price, /*stringr*/ $stock_id_match, /*ISO Code*/$currency )
+	function add_price_multi_stock_master( /*numeric*/$sales_type=1, /*double*/ $price, /*stringr*/ $stock_id_match, /*ISO Code*/$currency='CAD' )
 	{
 		//insert ignore into 1_prices (stock_id, sales_type_id,curr_abrev, price) select stock_id, 1, 'CAD', 115/1.05 from 1_stock_master where stock_id like 'hd-gh%'
 		try {
@@ -98,7 +105,10 @@ class fa_prices extends table_interface
 		}
 	}
 	/**********************************************//**
-	 * Update a set of prices by a matched stock id
+	 * Update a set of prices by a "like" matched stock id
+	 *	
+	 *	This can be used to update a series of products.
+	 *	Need to be careful that the match sku isn't too broad
 	 *
 	 * @param int sales_type_id
 	 * @param double price to set
@@ -195,13 +205,35 @@ class fa_prices extends table_interface
 		return $this->db_fetch( $res );
 	}
 	/**************************//**
+	 * Get records that have updated since a date
+	 *
+	 *	In support of Mantis 2918
+	 * 	List products that have been updated since a date
+	 *
+	 * @since 20240807
+	 *
+	 * @string date
+	 * @returns array
+	 * ****************************/
+	function get_price_updated_since( $updated_since )
+	{
+		$this->clear_sql_vars();
+		$this->select_array = array( '*' );
+		$this->from_array = array( TB_PREF . 'prices' );
+		$this->where_array = array( 'last_updated' = array( ">" => $updated_since ) );
+		//$this->where_array['last_updated'] =  $updated_since;
+		$this->buildSelectQuery();
+		$res = $this->query( "Prices could not be retrieved", "select" );
+		return $this->db_fetch( $res );
+	}
+	/**************************//**
 	 *
 	 * @internal stock_id, sales_type_id, curr_abrev
 	 * ****************************/
 	function get_stock_price()
 	{
 		$this->clear_sql_vars();
-		$this->from_array = array( TB_PREF . 'stock_master' );
+		$this->from_array = array( TB_PREF . 'prices' );
 		$this->select_array = array( '*' );
 		$this->where_array = array();
 		//$this->where_array['id'] =  $this->id;
@@ -220,7 +252,7 @@ class fa_prices extends table_interface
 	function get_prices()
 	{
 		$this->clear_sql_vars();
-		$this->from_array = array( TB_PREF . 'stock_master' );
+		$this->from_array = array( TB_PREF . 'prices' );
 		$this->select_array = array( '*' );
 		$this->where_array = array();
 		$this->where_array['id'] =  $this->id;
@@ -239,7 +271,7 @@ class fa_prices extends table_interface
 	function get_stock_price_type_currency()
 	{
 		$this->clear_sql_vars();
-		$this->from_array = array( TB_PREF . 'stock_master' );
+		$this->from_array = array( TB_PREF . 'prices' );
 		$this->select_array = array( '*' );
 		$this->where_array = array();
 		//$this->where_array['id'] =  $this->id;
