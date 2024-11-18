@@ -1,5 +1,7 @@
 <?php
 
+require_once( 'class.fa_origin.php' );
+
 class fa_gl extends fa_origin
 {
 	protected $startdate;	//!<date
@@ -97,8 +99,8 @@ class fa_gl extends fa_origin
 			{
 				$score += $this->score_matches( "enddate", sql2date( $arr['tran_date'] ) );
 			}
-			$score_acc = $this->score_matches( "Account", $arr['account'] ) );
-			if( $score_acc > 0 ) )
+			$score_acc = $this->score_matches( "Account", $arr['account'] );
+			if( $score_acc > 0 ) 
 			{
 				$score += $score_acc;
 			}
@@ -122,13 +124,15 @@ class fa_gl extends fa_origin
 					case ST_JOURNAL:
 						//On previously imported GnuCash entries, we had xx:VENDOR:...:...:...:... in the MEMO field
 						$exp = explode( ":", $arr['memo_'] );
-						$gl_vendor = $exp[1];
+						if( isset( $exp[1] ) )
+							$gl_vendor = $exp[1];
 						break;
 					case 20:
 					case ST_SUPPINVOICE:
 						$is_invoice = true;
 						$score -= 8;
-					case ST_SUPPPAYMENT:
+					//case ST_SUPPPAYMENT:
+					case ST_SUPPAYMENT:
 					case ST_SUPPCREDIT:
 						$supplier = new fa_suppliers();
 						$supplier->set( "supplier_id", $arr['person_id'] );
@@ -175,7 +179,7 @@ class fa_gl extends fa_origin
 			$arr['is_invoice'] = $is_invoice;
 			
 			//Insert the results by score.
-		 	$ind = 128 - $score;
+		 	$ind = 128 - abs($score);
 			while( is_array( $this->arr_arr[$ind] ) )
 			{
 				$ind--;
@@ -183,6 +187,7 @@ class fa_gl extends fa_origin
 			$this->arr_arr[$ind] = $arr;
 		}	//WHILE
 		//Take the scored array and throw away the empty ones.
+		$new_arr = array();
 		foreach( $this->arr_arr as $ar )
 		{
 			if( isset( $ar['tran_date'] ) )
@@ -191,6 +196,16 @@ class fa_gl extends fa_origin
 			}
 		}
 		return $new_arr;
+	}
+	/**//*********************************************************
+	*
+	* This was put into origin.  Why is it not found?
+	*
+	*************************************************************/
+	function match_tokens( $arr1, $arr2 )
+	{
+       		$result = array_intersect( $arr1, $arr2 );
+       		return count( $result );
 	}
 	/**//*************************************************
 	* Take the Vendor name, and account vendor, and compare
@@ -237,7 +252,8 @@ class fa_gl extends fa_origin
                 }
                 $matched = $this->match_tokens( $gl_vendor_tokens, $trz_vendor_tokens );
 		$weight = $this->matchscores['accountName'];
-                $score += round( $matched * $percent * $weight / 100, 0, PHP_ROUND_HALF_EVEN );
+                $score = round( $matched * $percent * $weight / 100, 0, PHP_ROUND_HALF_EVEN );
+//		$score += round( $matched * $percent * $weight / 100, 0, PHP_ROUND_HALF_EVEN );
 		return $score;
 	}
 	function get_gl_transactions()
@@ -250,5 +266,27 @@ class fa_gl extends fa_origin
                                         $this->dimension1,
                                         $this->dimension2, $this->filter, $this->min_dollar, $this->max_dollar, $this->person_id );
 		
+	}
+	/**//**********************************************************
+	* Accept the Bank Import transaction and convert to this class
+	*
+	* This is used to prep this class to do a search 
+	*	Customer E-transfers usually get recorded the day after the "payment date" when recurring invoice, or recorded paid on Quick Invoice
+	*
+	* @param array Bank Import transaction
+	* @param int days lee-way for searching
+	* @return none
+	****************************************************************/
+	function transaction2me( $trz, $spread = 2 )
+	{
+                $this->set( "min_dollar", $trz['transactionAmount'] );
+                $this->set( "max_dollar", $trz['transactionAmount'] );
+                $this->set( "amount", $trz['transactionAmount'] );
+                $this->set( "transactionDC", $trz['transactionDC'] );
+                $this->set( "days_spread", $spread );
+                $this->set( "startdate", $trz['valueTimestamp'] );     //Set converts using sql2date
+                $this->set( "enddate", $trz['entryTimestamp'] );       //Set converts using sql2date
+                $this->set( "accountName", $trz['accountName'] );
+                $this->set( "transactionCode", $trz['transactionCode'] );
 	}
 }	//CLASS

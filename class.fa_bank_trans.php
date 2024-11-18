@@ -13,13 +13,41 @@ include_once($path_to_root . "/inventory/includes/db/items_codes_db.inc");
 include_once($path_to_root . "/workcenters/includes/workcenters_db.inc");
 
 
+/**//******************************************
+* Renamed fa_bank_trans to fa_bank_trans_model 
+* so extended it to not break back compatability
+*
+************************************************/
+class fa_bank_trans extends fa_bank_trans_model
+{
+}
+
+
 /********************************************************//**
  * Various modules need to be able to add or get info about workcenters from FA
  *
  *	This class uses FA specific routines (display_notification etc)
+
++----------------+-------------+------+-----+------------+----------------+
+| Field          | Type        | Null | Key | Default    | Extra          |
++----------------+-------------+------+-----+------------+----------------+
+| id             | int(11)     | NO   | PRI | NULL       | auto_increment |
+| type           | smallint(6) | YES  | MUL | NULL       |                |
+| trans_no       | int(11)     | YES  |     | NULL       |                |
+| bank_act       | varchar(15) | NO   | MUL |            |                |
+| ref            | varchar(40) | YES  |     | NULL       |                |
+| trans_date     | date        | NO   |     | 0000-00-00 |                |
+| amount         | double      | YES  |     | NULL       |                |
+| dimension_id   | int(11)     | NO   |     | 0          |                |
+| dimension2_id  | int(11)     | NO   |     | 0          |                |
+| person_type_id | int(11)     | NO   |     | 0          |                |
+| person_id      | tinyblob    | YES  |     | NULL       |                |
+| reconciled     | date        | YES  |     | NULL       |                |
++----------------+-------------+------+-----+------------+----------------+
+
  *
  * **********************************************************/
-class fa_bank_trans extends table_interface
+class fa_bank_trans_model extends table_interface
 {
 	//fa_crm_persons
 	protected $id;	
@@ -97,7 +125,8 @@ class fa_bank_trans extends table_interface
 	/**************************************************//**
 	 * Return the balance at the end of the day for an account
 	 *
-	 * Replaces the function from gl_db_bank_trans.inc get_balance_before_bank_account
+	 * Cloned and adjusted the function from 
+	 * gl_db_bank_trans.inc get_balance_before_bank_account
 	 * ***************************************************/
 	/*float*/function getEODBalance( $date )
 	{
@@ -111,14 +140,32 @@ class fa_bank_trans extends table_interface
 		$this->query( "Can't calculate EOD balance", "select" );
 		$row = db_fetch_row( $this->query_result );
 		return $row[0];
+	}
+	/**************************************************//**
+	 * Return the balance at the begining of the day for an account
+	 *
+	 * Replaces the function from gl_db_bank_trans.inc get_balance_before_bank_account
+	 * ***************************************************/
+	/*float*/function getBODBalance( $date )
+	{
+		$sql_date = $date;
+		//$sql_date = date2sql( $date );
+		$this->select_array[] = "sum(amount)";
+		$this->from_array[] = $this->table_details['tablename'];
+		$this->where_array['bank_act'] = $this->bank_act;
+		$this->where_array['trans_date'] = array( 'lt', $sql_date);
+		$this->buildSelectQuery();
+		$this->query( "Can't calculate EOD balance", "select" );
+		$row = db_fetch_row( $this->query_result );
+		return $row[0];
 		/*
 		 *	$from = date2sql($from);
-	$sql = "SELECT SUM(amount) FROM ".TB_PREF."bank_trans WHERE bank_act="
-		.db_escape($bank_account) . "
-		AND trans_date < '$from'";
-	$before_qty = db_query($sql, "The starting balance on hand could not be calculated");
-	$bfw_row = db_fetch_row($before_qty);
-	return $bfw_row[0];
+			$sql = "SELECT SUM(amount) FROM ".TB_PREF."bank_trans WHERE bank_act="
+				.db_escape($bank_account) . "
+				AND trans_date < '$from'";
+			$before_qty = db_query($sql, "The starting balance on hand could not be calculated");
+			$bfw_row = db_fetch_row($before_qty);
+			return $bfw_row[0];
 		 * */
 	}
 }

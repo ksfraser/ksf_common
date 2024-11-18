@@ -3,6 +3,7 @@
 //TODO
 //	
 //20180531 Added basic code that I had in my GENERICTABLE class from my own framework.
+//20240807 Extended WHERE array to allow operands such as like, <>.
 
 require_once( 'defines.inc.php' );
 require_once( 'class.kfLog.php' );
@@ -60,6 +61,8 @@ class table_interface
 	protected $select_clause;	//!< string SQL sub-string (clause)
 	protected $from_clause;		//!< string SQL sub-string (clause)
 	protected $where_clause;	//!< string SQL sub-string (clause)
+					//	The WHERE array can be COLUMN => VALUE/Column (that it is equal to )
+					//	--OR-- VALUE => array( OPERAND (ie <> Like) => VALUE/Column
 	protected $groupby_clause;	//!< string SQL sub-string (clause)
 	protected $having_clause;	//!< string SQL sub-string (clause)
 	protected $orderby_clause;	//!< string SQL sub-string (clause)
@@ -350,6 +353,13 @@ class table_interface
 		$this->notify( __METHOD__ . ":" . __LINE__ . " Exiting " . __METHOD__, "WARN" );
 		return $res;
 	}
+	/**//***************************************************************
+	 * Run a query.  Sets query_results
+	 *
+	 *
+	 * @param string Error Message if query fails
+	 * @returns mysql_res object (result)
+	 *******************************************************************/
 	function query( $msg )
 	{
 		$this->notify( __METHOD__ . ":" . __LINE__ . " Entering " . __METHOD__, "WARN" );
@@ -848,10 +858,33 @@ class table_interface
 				//		throw new Exception( "Select variable not in table definition", KSF_FIELD_NOT_CLASS_VAR );
  				
 				}
+/*
 				if( 0 < $fieldcount )
 					$sql .= " and ";
 				$sql .= "$col = '$val' ";
 				$fieldcount++;
+*/
+				if( ! is_array( $val )
+				{
+					if( 0 < $fieldcount )
+					{
+						$sql .= " and ";
+					}
+					$sql .= "$col = '$val' ";
+					$fieldcount++;
+				}
+				else
+				{
+					foreach( $val as $operand => $field )
+					{
+						if( 0 < $fieldcount )
+						{
+							$sql .= " and ";
+						}
+						$sql .= "$col $operand $field";
+						$fieldcount++;
+					}
+				}
 			}
 		}
 		$this->where_clause = " WHERE " . $sql;
