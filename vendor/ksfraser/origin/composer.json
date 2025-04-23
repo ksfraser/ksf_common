@@ -1,52 +1,48 @@
 {
-    "name": "ksfraser/X",
-    "type": "library",
-    "description": "Magic Library.  ***CHANGEME***    library",
-    "keywords": [
-        "framework",
-    ],
-    "homepage": "http://ksfraser.ca/",
-    "license": "MIT",
-    "authors": [
-        {
-            "name": "Kevin Fraser",
-            "email": "kevin@ksfraser.ca",
-            "homepage": "https://ksfraser.ca/"
-        }
-    ],
-    "require": {
-        "php": "^7.2.5",
-        "ext-json": "*",
-        "psr/http-client": "^1.0"
+  "name": "ksfraser/origin",
+  "description": "A set of base classes for my framework.",
+  "homepage": "https://github.com/ksfraser/origin",
+  "type": "library",
+  "authors": [
+    {
+      "name": "Kevin Fraser",
+      "email": "kevin@ksfraser.ca",
+      "role": "lead",
+      "homepage": "https://ksfraser.ca"
+    }
+  ],
+  "minimum-stability": "dev",
+  "require": {
+  },
+  "keywords": [
+      "ksfraser"
+  ],
+  "support": {
+      "issues": "https://github.com/ksfraser/origin/issues",
+      "security": "https://github.com/ksfraser/origin/security/policy"
+  },
+  "autoload": {
+    "psr-4": {
+      "ksfraser\\origin\\": "src/"
     },
-    "provide": {
-        "psr/http-client-implementation": "1.0"
-    },
-    "require-dev": {
-        "psr/log": "^1.1"
-    },
-    "suggest": {
-        "psr/log": "Required for using the Log middleware"
-    },
-    "config": {
-        "sort-packages": true
-    },
-    "extra": {
-        "branch-alias": {
-            "dev-master": "7.0-dev"
-        }
-    },
+    "classmap": [
+        "src/"
+    ]
+  },
+  "require-dev": {
+        "phpstan/phpstan": "^0.12.91",
+        "phpunit/phpunit": "^8.5.14"
+  },
     "autoload": {
-        "psr-4": {
-            "GuzzleHttp\\": "src/"
-        },
-        "files": [
-            "src/functions_include.php"
-        ]
+        "psr-4": {"ksfraser\\origin\\": "src/"}
     },
     "autoload-dev": {
-        "psr-4": {
-            "GuzzleHttp\\Tests\\": "tests/"
-        }
+        "psr-4": {"ksfraser\\origin\\": "tests/"}
+    },
+    "scripts": {
+        "test": "@php vendor/bin/phpunit",
+        "phpstan": "@php vendor/bin/phpstan analyse"
     }
+
 }
+

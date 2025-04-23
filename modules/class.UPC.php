@@ -1,6 +1,7 @@
 <?php
 
 require_once( 'class.origin.php' );
+require_once('../src/class.data_validate.php');
 
 class UPC extends origin
 {
@@ -23,69 +24,22 @@ class UPC extends origin
 	function setUPC( $caller, $data )
 	{
                 $this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', get_class( $this ) . "::" . __FUNCTION__ . "::" . __LINE__ );
-                $ret = "";
-                if( is_array( $data ) )
-                {
-                        if( is_array( $data[0] ) )
-                        {
-                                foreach( $data as $row )
-                                {
-                                        $this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', get_class( $this ) . "::" . __FUNCTION__ . "::" . __LINE__ );
-                                        $this->setUPC( $this, $row );
-                                }
+
+                if (is_string($data) && DataValidator::validateLength($data, MIN_UPC_LEN, MAX_UPC_LEN)) {
+                    $this->set('UPC', $data);
+                    return true;
+                } elseif (is_array($data)) {
+                    foreach ($data as $row) {
+                        if (is_string($row) && DataValidator::validateLength($row, MIN_UPC_LEN, MAX_UPC_LEN)) {
+                            $this->set('UPC', $row);
                         }
-                        else if( isset( $data['upc'] ) and strlen( $data['upc'] ) >= MIN_UPC_LEN AND strlen( $data['upc'] ) <= MAX_UPC_LEN)
-                        {
-                                $this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', get_class( $this ) . "::" . __FUNCTION__ . "::" . __LINE__ );
-                                $this->set( 'UPC', $data['upc'] );
-                        }
-                        else if( isset( $data['UPC'] ) and strlen( $data['upc'] ) >= MIN_UPC_LEN AND strlen( $data['upc'] ) <= MAX_UPC_LEN )
-                        {
-                                $this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', get_class( $this ) . "::" . __FUNCTION__ . "::" . __LINE__ );
-                                $this->set( 'UPC', $data['UPC'] );
-                        }
+                    }
+                    return true;
+                } elseif (is_object($data) && isset($data->UPC) && DataValidator::validateLength($data->UPC, MIN_UPC_LEN, MAX_UPC_LEN)) {
+                    $this->set('UPC', $data->UPC);
+                    return true;
                 }
-                else
-                if( is_object( $data ) )
-                {
-			//If upc/UPC is protected this will FAIL!
-                        if( isset( $data->upc ) and strlen( $data->upc ) >= MIN_UPC_LEN AND strlen( $data->upc ) <= MAX_UPC_LEN )
-                        {
-                                $this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', get_class( $this ) . "::" . __FUNCTION__ . "::" . __LINE__ );
-                                $this->set( 'UPC', $data->upc );
-                        }
-                        else
-                        if( isset( $data->UPC ) and strlen( $data->UPC ) >= MIN_UPC_LEN AND strlen( $data->UPC ) <= MAX_UPC_LEN )
-                        {
-                                $this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', get_class( $this ) . "::" . __FUNCTION__ . "::" . __LINE__ );
-                                $this->set( 'UPC', $data->UPC );
-                        }
-                }
-                else if( is_string( $data ) and strlen( $data ) >= MIN_UPC_LEN AND strlen( $data ) <= MAX_UPC_LEN )
-                {
-                        //assuming single UPC
-                        $this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', get_class( $this ) . "::" . __FUNCTION__ . "::" . __LINE__ );
-                        $this->set( 'UPC', $data );
-                }
-                else
-                if( is_object( $caller ) )
-                {
-                        if( isset( $caller->upc ) and strlen( $caller->upc ) >= MIN_UPC_LEN AND strlen( $caller->upc ) < MAX_UPC_LEN )
-                        {
-                                $this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', get_class( $this ) . "::" . __FUNCTION__ . "::" . __LINE__ );
-                                $this->set( 'UPC', $caller->upc );
-                        }
-                        else
-                        if( isset( $caller->UPC ) and strlen( $caller->UPC ) >= MIN_UPC_LEN AND strlen( $caller->UPC ) < MAX_UPC_LEN )
-                        {
-                                $this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', get_class( $this ) . "::" . __FUNCTION__ . "::" . __LINE__ );
-                                $this->set( 'UPC', $caller->UPC );
-                        }
-                }
-		else
-		{
-			return FALSE;
-		}
-		return TRUE;
+
+                return false;
 	}
 }

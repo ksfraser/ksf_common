@@ -1,6 +1,7 @@
 <?php
 
 require_once( '../class.origin.php' );
+require_once('../../src/class.data_validate.php');
 
 /*****************************************************//**
 * A class for all other classes to dump their data into.
@@ -31,63 +32,18 @@ class dataContainer extends origin
 	}
 	function is_mandatory_set()
 	{
-		$this->b_mandatory_set = FALSE;
-		foreach( $this->mandatory_fields_array as $field )
-		{
-			$fd = $this->get( $field );
-			if( strlen( $fd ) < 1 )
-			{
-				$this->b_mandatory_set = false;
-				return FALSE;
-			}
-		}
-		$this->b_mandatory_set = TRUE;
-		return TRUE;
+		return DataValidator::areMandatoryFieldsSet($this->mandatory_fields_array, $this);
 	}
-/*
-	function set( $field, $value, $force = true, $validate = true )
+	function set($field, $value, $force = true, $validate = true)
 	{
-		if( $validate )
-		{
-			$validtype = false;
-			if( isset( $this->dataType_array[ $field ] ) )
-			{
-				$datatype = $this->dataType_array[ $field ];
-				switch( $datatype )
-				{
-					case 'novalidate' :
-						$validtype = true;
-						break;
-					case 'int':
-						if( is_int( $field ) )
-						{
-							$validtype = true;
-						}
-						break;
-					case 'string':
-						if( is_string( $field ) )
-						{
-							$validtype = true;
-						}
-					default:
-						break;
-				}
+		if ($validate && isset($this->dataType_array[$field])) {
+			$datatype = $this->dataType_array[$field];
+			if (!DataValidator::validateType($value, $datatype)) {
+				throw new Exception("Invalid data type for $field. Expected $datatype.", KSF_INVALID_TYPE);
 			}
 		}
-		else
-		{
-			$validtype = true;
-		}
-		if( $validtype )
-		{
-			parent::set( $field, $value, $force );
-		}
-		else
-		{
-			throw new Excpetion( "Data type didn't validate.  Expeceted " . $datatype . " and got " , KSF_INVALID_TYPE );
-		}
+		parent::set($field, $value, $force);
 	}
-*/
 }
 
 class kalli_data extends dataContainer {
