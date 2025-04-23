@@ -1,42 +1,13 @@
 <?php
 
-//TODO
-//	
-//20180531 Added basic code that I had in my GENERICTABLE class from my own framework.
-//20240807 Extended WHERE array to allow operands such as like, <>.
-
 require_once( 'defines.inc.php' );
 require_once( 'class.kfLog.php' );
+require_once 'class.BaseDAO.php';
 
-//global $path_to_root;
-//if( !isset( $path_to_root ) )
-	$path_to_root = dirname( __FILE__ ) . '/../..';
-require_once( $path_to_root . "/includes/db/connect_db.inc" );	//db_escape
-
-/*****************************************************************************************//**
- * Base class to provide basic SQL functions
- *
- * Provides:
-        function get( $field )
-        /*@bool@* /function set( $field, $value = null )
-        /*@bool@* /function validate( $data_value, $data_type )
-        /*none* /function select_row( $set_caller = false )
-        /*@mysql_result@* /function select_table($fieldlist = "*", /*@array@* /$where = null, /*@array@* /$orderby = null, /*@int@* /$limit = null)
-        function delete_table()
-        function update_table()
-        /*@bool@* /function check_table_for_id()
-        /*@int@* /function insert_table()
-        function create_table()
-        function alter_table()
-        /*@int@* /function count_rows()
-        /*@int@* /function count_filtered($where = null)
-        /*string* /function getPrimaryKey()
-        /*none* /function getByPrimaryKey()
-	function assoc2var( $assoc )		Take an associated array and take returned values and place into the calling MODEL class
-	
- * 
- *
- * *******************************************************************************************/
+/**
+ * Class table_interface
+ * Provides basic SQL functions for database tables.
+ */
 class table_interface
 {
 	var $db_insert_id;	//!< int set by $this->insert_table();

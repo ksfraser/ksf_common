@@ -74,25 +74,25 @@ class fa_stock_master extends table_interface
 		$this->table_details['tablename'] = TB_PREF . 'stock_master';
 		$this->fields_array[] = array( 'name' => 'stock_id', 'type' => 'varchar(64)', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );
 		$this->fields_array[] = array( 'name' => 'category_id', 'type' => 'int(11)', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' ); 
-		$this->fields_array[] = array( 'name' => 'tax_type_id', 'type' => 'int(11)', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' ); 
+		$this->fields_array[] = array( 'name' => 'tax_type_id', 'type' => 'int(11)', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' ); ' ); 
 		$this->fields_array[] = array( 'name' => 'description', 'type' => 'varchar(200)', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );   
 		$this->fields_array[] = array( 'name' => 'long_description', 'type' => 'text', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' ); 
 		$this->fields_array[] = array( 'name' => 'units', 'type' => ' varchar(20)', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' ); 
-		$this->fields_array[] = array( 'name' => 'mb_flag', 'type' => 'char(1)', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' ); 
+		$this->fields_array[] = array( 'name' => 'mb_flag', 'type' => 'char(1)', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );  => '' ); 
 		$this->fields_array[] = array( 'name' => 'sales_account', 'type' => 'varchar(15)', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );
-		$this->fields_array[] = array( 'name' => 'cogs_account', 'type' => 'varchar(15)', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );
-		$this->fields_array[] = array( 'name' => 'inventory_account', 'type' => 'varchar(15)', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );
+		$this->fields_array[] = array( 'name' => 'cogs_account', 'type' => 'varchar(15)', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );'' );
+		$this->fields_array[] = array( 'name' => 'inventory_account', 'type' => 'varchar(15)', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );;
 		$this->fields_array[] = array( 'name' => 'adjustment_account', 'type' => 'varchar(15)', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );
 		$this->fields_array[] = array( 'name' => 'assembly_account', 'type' => 'varchar(15)', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' ); 
 		$this->fields_array[] = array( 'name' => 'dimension_id', 'type' => 'int(11)', 'null' => 'NULL', 'readwrite' => 'readwrite', 'default' => '' ); 
-		$this->fields_array[] = array( 'name' => 'dimension2_id', 'type' => 'int(11)', 'null' => 'NULL', 'readwrite' => 'readwrite', 'default' => '' );
+		$this->fields_array[] = array( 'name' => 'dimension2_id', 'type' => 'int(11)', 'null' => 'NULL', 'readwrite' => 'readwrite', 'default' => '' );;
 		$this->fields_array[] = array( 'name' => 'actual_cost', 'type' => 'double', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );
-		$this->fields_array[] = array( 'name' => 'last_cost', 'type' => 'double', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );
+		$this->fields_array[] = array( 'name' => 'last_cost', 'type' => 'double', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );' );
 		$this->fields_array[] = array( 'name' => 'material_cost', 'type' => 'double', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );
-		$this->fields_array[] = array( 'name' => 'labour_cost', 'type' => 'double', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );
+		$this->fields_array[] = array( 'name' => 'labour_cost', 'type' => 'double', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' ););
 		$this->fields_array[] = array( 'name' => 'overhead_cost', 'type' => 'double', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );
 		$this->fields_array[] = array( 'name' => 'inactive', 'type' => 'bool', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );
-		$this->fields_array[] = array( 'name' => 'no_sale', 'type' => 'bool', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );
+		$this->fields_array[] = array( 'name' => 'no_sale', 'type' => 'bool', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );;
 		$this->fields_array[] = array( 'name' => 'editable', 'type' => 'bool', 'null' => 'NOT NULL', 'readwrite' => 'readwrite', 'default' => '' );
 		$this->table_details['primarykey'] = "stock_id";
 	}
@@ -108,10 +108,8 @@ class fa_stock_master extends table_interface
 	{
 		return $this->getByPrimaryKey();
 	}
-
-	/*@bool@*/function validate($value, $type)
-	{
-	}
+/*@bool@*/function validate($value, $type)
+	/*@b	}
 	/****
 	 *
 	 * 		try {

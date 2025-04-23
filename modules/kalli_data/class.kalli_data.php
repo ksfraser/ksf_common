@@ -17,28 +17,27 @@ class dataContainer extends origin
 	protected $b_mandatory_set;	//!< bool has the mandatory fields been set
 	protected $mandatory_fields_array;	//!< array the list of mandatory fields
 	protected $dataType_array;	//!< array the data types of our fields for validity checking
-	function __construct()
+	protected $validator;
+
+	public function __construct($validator)
 	{
 		parent::__construct();
-		$this->b_mandatory_set = FALSE;
-		if( ! isset( $this->mandatory_fields_array ) )
-		{
-			$this->mandatory_fields_array = array();
-		}
-		if( ! isset( $this->dataType_array ) )
-		{
-			$this->dataType_array = array();
-		}
+		$this->validator = $validator;
+		$this->b_mandatory_set = false;
+		$this->mandatory_fields_array = $this->mandatory_fields_array ?? [];
+		$this->dataType_array = $this->dataType_array ?? [];
 	}
-	function is_mandatory_set()
+
+	public function is_mandatory_set()
 	{
-		return DataValidator::areMandatoryFieldsSet($this->mandatory_fields_array, $this);
+		return $this->validator->areMandatoryFieldsSet($this->mandatory_fields_array, $this);
 	}
-	function set($field, $value, $force = true, $validate = true)
+
+	public function set($field, $value, $force = true, $validate = true)
 	{
 		if ($validate && isset($this->dataType_array[$field])) {
 			$datatype = $this->dataType_array[$field];
-			if (!DataValidator::validateType($value, $datatype)) {
+			if (!$this->validator->validateType($value, $datatype)) {
 				throw new Exception("Invalid data type for $field. Expected $datatype.", KSF_INVALID_TYPE);
 			}
 		}
@@ -84,9 +83,9 @@ class kalli_data extends dataContainer {
       	protected $weight;
       
 
-	function __construct()
+	function __construct($validator)
 	{
-		parent::__construct();
+		parent::__construct($validator);
 		$this->mandatory_fields_array = array( 'Title', 'upc' );
 		$this->copied_from_array = array();
   		$this->tell_eventloop( $this, 'NOTIFY_LOG_DEBUG', get_class( $this ) . "::" . __FUNCTION__ . "::" . __LINE__ );
